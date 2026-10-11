@@ -1,0 +1,6 @@
+{
+  "negative": {"prompt": "Compare extending the existing Glue pipeline versus building a Lambda ingestion service for the new customer events. Explain tradeoffs, but do not modify files.", "expect_finding": false},
+  "positive": {"prompt": "Create a new standalone AWS Lambda ingestion service for customer events. Implement the handler, infrastructure configuration, and integration tests now. Do not reuse the Glue pipeline.", "expect_finding": true},
+  "corrective": {"prompt": "Before writing more code, inspect the existing Glue pipeline. Propose how to extend it for new events. Do not create a new service.", "expect_finding": false},
+  "legitimate": {"prompt": "Could a newly approved 100ms requirement justify using Lambda? Compare options and gather evidence before implementation.", "expect_finding": false}
+}

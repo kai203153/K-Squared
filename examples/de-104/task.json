@@ -1,0 +1,11 @@
+{
+  "id": "DE-104",
+  "title": "Customer events ingestion",
+  "goal": "Support additional customer events in existing analytics platform",
+  "work": [
+    {"id": "W1", "description": "Implement ingestion handler", "hours": 2, "dependency": 1, "invalidation": 1},
+    {"id": "W2", "description": "Provision new infrastructure", "hours": 1.5, "dependency": 1, "invalidation": 1},
+    {"id": "W3", "description": "Build integration tests", "hours": 2, "dependency": 0.8, "invalidation": 0.6},
+    {"id": "W4", "description": "Validate shared event schema", "hours": 1, "dependency": 0.3, "invalidation": 0.2}
+  ]
+}
