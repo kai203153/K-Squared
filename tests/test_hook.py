@@ -58,12 +58,14 @@ class HookTests(HookTestCase):
 
     def test_gate_asks_then_allows(self):
         self.hook("prompt", {"session_id": "g", "prompt": SCENARIOS["positive"]["prompt"]})
-        tool = {"session_id": "g", "tool_name": "Bash", "tool_input": {"command": "sam deploy"}}
+        read = {"session_id": "g", "tool_name": "Bash", "tool_input": {"command": "cat docs/ADR-12.md"}}
+        self.assertIsNone(self.hook("pre_tool", read, gate="once"))  # Reading the evidence is never paused.
+        tool = {"session_id": "g", "tool_name": "Write", "tool_input": {"file_path": "handler.py"}}
         out = self.hook("pre_tool", tool, gate="once")["hookSpecificOutput"]
         self.assertEqual((out["hookEventName"], out["permissionDecision"]), ("PreToolUse", "ask"))
         self.assertIn("ADR-12", out["permissionDecisionReason"])
         self.assertIsNone(self.hook("pre_tool", tool, gate="once"))
-        self.assertNotIn("sam deploy", json.dumps(self.events()))
+        self.assertNotIn("cat docs", json.dumps(self.events()))
 
     def test_plan_is_captured_and_sent_back(self):
         plan = {"session_id": "p", "tool_name": "ExitPlanMode", "tool_input": {"plan": SCENARIOS["retry"]["prompt"]}}

@@ -81,7 +81,7 @@ def make_server(port: int | None = None, worker: Worker | None = None) -> LocalS
                 elif url.path == "/api/hook":
                     self.send_json(nudge.respond(
                         q["task"], q["session"], q["hook"], q.get("mode") or None, q.get("event_id") or None,
-                        float(q["wait"]) if "wait" in q else None))
+                        float(q["wait"]) if "wait" in q else None, q.get("tool") or None))
                 elif url.path == "/api/findings":
                     self.send_json(engine.open_findings(q["task"], q.get("session")))
                 elif url.path == "/api/knowledge":

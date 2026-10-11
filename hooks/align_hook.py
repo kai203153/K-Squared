@@ -90,7 +90,8 @@ def main() -> None:
 
     slow = kind in ("prompt", "plan")
     query = urllib.parse.urlencode({"task": task, "session": session, "hook": kind,
-                                    "mode": os.environ.get("ALIGN_GATE", "off"), "event_id": event_id})
+                                    "mode": os.environ.get("ALIGN_GATE", "off"), "event_id": event_id,
+                                    "tool": str(data.get("tool_name", ""))})
     result = call("GET", f"/api/hook?{query}", timeout=NUDGE_WAIT + 2 if slow else 3.5)
     out = output(kind, result)
     if out:

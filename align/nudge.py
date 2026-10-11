@@ -3,7 +3,7 @@
 Every finding reaches the engineer once, through Claude: as hidden context that Claude
 raises as a question (prompt and post-tool hooks), or by sending a plan back for revision.
 A short visible line (`system_message`) tells the engineer directly. HIGH findings can also
-pause file and shell tools (`ALIGN_GATE=once|strict`).
+pause file-writing tools (`ALIGN_GATE=once|strict`).
 """
 import time
 
@@ -12,6 +12,8 @@ from .config import GATE_MODES, settings
 from .detect import ALREADY_EXISTS
 
 HOOKS = ("prompt", "plan", "pre_tool", "post_tool")
+# Only tools that change files are paused; reads and shell exploration (e.g. opening the ADR) are not.
+GATED_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit")
 TOOL_WAIT = 2.0
 MAX_WAIT = 30.0
 RELATION_LABEL = {"contradicted": "contradicts", ALREADY_EXISTS: "already exists"}
@@ -62,7 +64,7 @@ def _mark(column: str, ids: list[str]) -> None:
 
 
 def respond(task_id: str, session: str, hook: str, mode: str | None = None,
-            event_id: str | None = None, wait: float | None = None) -> dict:
+            event_id: str | None = None, wait: float | None = None, tool: str | None = None) -> dict:
     if hook not in HOOKS:
         raise ValueError(f"hook must be one of {HOOKS}")
     mode = mode or settings().gate
@@ -77,7 +79,7 @@ def respond(task_id: str, session: str, hook: str, mode: str | None = None,
     out: dict = {"decision": "allow"}
 
     if hook == "pre_tool":
-        if mode != "off":
+        if mode != "off" and (tool is None or tool in GATED_TOOLS):
             gated = [f for f in open_ if f["severity"] == "HIGH"
                      and (mode == "strict" or f["gate_shown_at"] is None)]
             if gated:
