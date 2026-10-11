@@ -2,7 +2,12 @@
 
 Align catches a junior engineer's mistaken assumptions **before a commit or PR**, and nudges them in the right direction while they work with Claude Code.
 
-Each prompt and each finished plan is compared automatically against a **ground-truth knowledge base**. That base contains only verified knowledge: decisions someone confirmed, and facts read from committed production code. When an assumption contradicts that knowledge, or rebuilds something that already exists, the engineer is warned in three ways:
+Each prompt and each finished plan is checked automatically for the assumptions it rests on, and compared against a **ground-truth knowledge base**. That base contains only verified knowledge: decisions someone confirmed, and facts read from committed production code. The engineer is warned in three ways when they:
+- contradict that knowledge,
+- rebuild something that already exists, or
+- simply act on a material assumption that nothing confirms. A new feature usually has no ground truth yet, and the point is that they *notice* the assumption.
+
+The warnings appear:
 
 - **Inside Claude Code.** Claude is told the finding as hidden context and raises it as a question, citing the source. The engineer sees a short `Align:` line. A finished plan can be sent back for revision.
 - **As a desktop pop-up** (macOS, or Linux with `notify-send`).
@@ -36,10 +41,14 @@ The knowledge base is a separate SQLite file (`.align/knowledge.db`, or `ALIGN_K
 ## How assumptions are checked
 
 1. **Find related facts.** For each prompt or plan, Align collects the task's decisions plus the production-code facts most related to the text (matched by shared word stems in names, paths and docstrings).
-2. **Name the assumptions.**
-   - **Claude detector** (`anthropic` SDK installed): names the assumptions behind the request, stated or not, and relates each to the facts as `contradicted` or `already_exists`, quoting both sides word for word.
-   - **Rule detector** (offline fallback): uses each decision's `forbid:`/`require:` patterns, and notices "create a new X" when production code already has an X.
-3. **Grounding check.** A claim becomes a finding only if:
+2. **Name the assumptions.** The first available detector is used:
+   - **Claude API** (`anthropic` SDK plus `ANTHROPIC_API_KEY`).
+   - **Headless Claude Code** (`claude -p` on your existing Claude Code login; no key needed). It runs with no tools, no settings or hooks, no MCP servers and no saved session, so it can't trigger Align recursively. It takes about 5–8 s with `ALIGN_CLI_MODEL=sonnet`.
+
+   Either one names the assumptions behind the request, stated or not, as `contradicted`, `already_exists` or `unconfirmed` (at most two of those, and only material ones), quoting the engineer word for word.
+
+   **Offline rules** are the fallback. They use each decision's `forbid:`/`require:` patterns, notice "create a new X" when production code already has an X, and flag work that depends on an external system ("the payments API") the knowledge base doesn't know.
+3. **Grounding check.** An unconfirmed assumption needs an exact quote from the engineer and a commitment to act; there's no fact to cite. A conflict becomes a finding only if:
    - the fact exists, is verified and is current;
    - the fact quote appears word for word in the fact;
    - the engineer quote appears word for word in their message;
@@ -47,9 +56,15 @@ The knowledge base is a separate SQLite file (`.align/knowledge.db`, or `ALIGN_K
 
    A model can't invent a finding past this check.
 4. **Severity:**
-   - **HIGH:** contradicts a confirmed decision. It can pause writes.
-   - **MEDIUM:** contradicts production code (Claude detector only).
-   - **LOW:** something like it already exists. A pointer, never a blocker.
+
+   | Level | Meaning | Engineer sees |
+   |---|---|---|
+   | **HIGH** | Contradicts a confirmed decision | Claude raises it; alert dialog with *Explore reason* / *Ask manager* (placeholder); optional pause before file writes |
+   | **MEDIUM** | Production code already has it, or works differently | Claude raises it; "check existing code first" banner |
+   | **LOW** | A material assumption nothing verified confirms | Claude asks them to confirm it; "you might be operating on an assumption" banner |
+
+   - A LOW finding counts as acknowledged when the engineer replies to Claude's question, or clicks *I acknowledge this assumption* on the dashboard.
+   - A finding that was seen, acknowledged or dismissed isn't raised again in the same session. Only a resolved finding can recur.
 
 ## Quick start
 
@@ -89,7 +104,7 @@ python3 -m align install-hooks path/to/repo --task YOUR-TASK --gate once --git
 
 | Hook | What happens |
 |---|---|
-| `UserPromptSubmit` | Waits up to `ALIGN_NUDGE_WAIT` seconds (default 10) for analysis. New findings go to Claude as `additionalContext` and to the engineer as a `systemMessage`. |
+| `UserPromptSubmit` | Waits up to `ALIGN_NUDGE_WAIT` seconds (default 15) for analysis. New findings go to Claude as `additionalContext` and to the engineer as a `systemMessage`. |
 | `PreToolUse` on `ExitPlanMode` | The plan is analyzed. With the gate on, a plan with findings is denied, with the reason given to Claude so it revises the plan or asks the engineer. |
 | `PreToolUse` on Write/Edit/Bash | With `ALIGN_GATE=once\|strict`, an open HIGH finding makes Claude Code ask before the tool runs. |
 | `PostToolUse` | Findings that arrived after the prompt (slow analysis, tool-event findings) go to Claude here. |
@@ -138,10 +153,11 @@ python3 -m align serve                       # ALIGN_DETECTOR=auto uses Claude w
 | `ALIGN_HOME` | `./.align` | Activity DB and token |
 | `ALIGN_KNOWLEDGE` | `$ALIGN_HOME/knowledge.db` | Ground-truth store; point several installs at one file to share it |
 | `ALIGN_PORT` | `8765` | Server port |
-| `ALIGN_DETECTOR` | `auto` | `auto` \| `claude` \| `rules` |
+| `ALIGN_DETECTOR` | `auto` | `auto` \| `claude` \| `claude-code` \| `rules` |
+| `ALIGN_CLI_MODEL` | `sonnet` | Model for the headless Claude Code detector |
 | `ALIGN_MODEL` | `claude-opus-5-5` | Claude model for detection |
 | `ALIGN_NOTIFY` | `auto` | Desktop pop-ups: `auto` \| `on` \| `off` |
-| `ALIGN_NUDGE_WAIT` | `10` | Seconds the prompt/plan hook waits for analysis |
+| `ALIGN_NUDGE_WAIT` | `15` | Seconds the prompt/plan hook waits for analysis |
 | `ALIGN_GATE` | `off` | Hook-side: `off`, `once` (pause once per HIGH finding), `strict` (until responded; also blocks commits) |
 | `ALIGN_TASK_ID` | none | Hook-side: which task this repo works on |
 | `ALIGN_CAPTURE_COMMANDS` | `0` | Hook-side: `1` captures Bash commands (redacted) as well as tool names |
@@ -161,7 +177,7 @@ All `/api/*` routes require `X-Align-Token` (the contents of `.align/token`). Re
 ## Development
 
 ```bash
-python3 -m unittest discover -s tests -t .   # 65 tests; no network or SDK needed
+python3 -m unittest discover -s tests -t .   # 76 tests; no network, SDK or Claude login needed
 python3 -m align reset                       # clear activity, keep context and knowledge
 python3 -m align knowledge list [query]      # inspect the ground truth
 ```

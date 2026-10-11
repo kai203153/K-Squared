@@ -6,7 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-DETECTOR_MODES = ("auto", "claude", "rules")
+DETECTOR_MODES = ("auto", "claude", "claude-code", "rules")
 GATE_MODES = ("off", "once", "strict")
 NOTIFY_MODES = ("auto", "on", "off")
 
@@ -18,11 +18,13 @@ class Settings:
     port: int
     detector: str
     model: str
+    cli_model: str
     gate: str
     llm_timeout: float
     knowledge_path: Path
     notify: str
     nudge_wait: float
+    popup_delay: float
 
     @property
     def db_path(self) -> Path:
@@ -48,13 +50,17 @@ def settings() -> Settings:
         port=int(os.environ.get("ALIGN_PORT", "8765")),
         detector=detector if detector in DETECTOR_MODES else "auto",
         model=os.environ.get("ALIGN_MODEL", "claude-opus-5-5"),
+        # Headless Claude Code detector: a fast model keeps the prompt hook responsive.
+        cli_model=os.environ.get("ALIGN_CLI_MODEL", "sonnet"),
         gate=gate if gate in GATE_MODES else "off",
         llm_timeout=float(os.environ.get("ALIGN_LLM_TIMEOUT", "20")),
         # Ground truth is a separate file so it can be shared by every repo and task.
         knowledge_path=Path(os.environ.get("ALIGN_KNOWLEDGE", home / "knowledge.db")),
         notify=notify if notify in NOTIFY_MODES else "auto",
         # How long the prompt/plan hook waits for analysis before letting Claude continue.
-        nudge_wait=float(os.environ.get("ALIGN_NUDGE_WAIT", "10")),
+        nudge_wait=float(os.environ.get("ALIGN_NUDGE_WAIT", "15")),
+        # Seconds before a pop-up appears; an instant alert reads as canned, so pause like a real check.
+        popup_delay=float(os.environ.get("ALIGN_POPUP_DELAY", "5")),
     )
 
 

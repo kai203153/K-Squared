@@ -1,14 +1,17 @@
-"""Offline detector. Two checks, both grounded in verified facts:
+"""Offline detector, used when no Claude backend is available. Three checks:
 
 1. Decisions: a non-negated match of a fact's `forbid` pattern, or a negated match of a
    `require` pattern, means the engineer assumes the decision doesn't apply.
 2. Existing code: "create a new X" where production code already has an X means the
    engineer assumes X doesn't exist yet.
+3. Unconfirmed: work that depends on an external system ("the payments API") the knowledge
+   base knows nothing about rests on an assumption the engineer should acknowledge.
 """
+import hashlib
 import re
 
 from ..knowledge import CODE_KINDS, DECISION_KINDS, Fact, terms
-from . import ALREADY_EXISTS, CONTRADICTED, Analysis, Claim
+from . import ALREADY_EXISTS, CONTRADICTED, UNCONFIRMED, Analysis, Claim
 from .stage import classify, negated
 
 SENTENCE = re.compile(r"[^.!?\n]+[.!?]?")
@@ -19,6 +22,11 @@ CREATE = re.compile(
     re.I,
 )
 MIN_OVERLAP = 2
+DEPENDENCY = re.compile(
+    r"\b(?:the|our|their|its|a|an)\s+(?P<name>[\w.-]+(?:\s+[\w.-]+)?)\s+"
+    r"(?P<what>API|service|endpoint|table|queue|topic|bucket|database|DB|webhook|feed|SDK)s?\b",
+    re.I,
+)
 
 
 def sentence_at(text: str, pos: int) -> str:
@@ -48,6 +56,9 @@ class RulesDetector:
         claims = [c for f in facts if f.kind in DECISION_KINDS and (c := self._decision(f, text))]
         if kind != "pre_tool":
             claims += self._existing(text, [f for f in facts if f.kind in CODE_KINDS])
+        if kind != "pre_tool" and not claims:
+            # Only when nothing more specific was found, to keep nudges rare.
+            claims += self._unconfirmed(text, facts)
         if kind == "pre_tool":
             # Quote the original content; the normalized text is not verbatim.
             for c in claims:
@@ -98,3 +109,21 @@ class RulesDetector:
                 relation=ALREADY_EXISTS, assumption=f"There is no existing {obj}",
             ))
         return claims
+
+    def _unconfirmed(self, text: str, facts: list[Fact]) -> list[Claim]:
+        known = set().union(*(f.index_terms() for f in facts)) if facts else set()
+        for m in DEPENDENCY.finditer(text):
+            if negated(text, m.start()):
+                continue
+            name = m.group("name")
+            wanted = terms(name)
+            if not wanted or wanted & known or name.lower() in ("new", "existing", "same"):
+                continue
+            thing = f"the {name} {m.group('what')}"
+            return [Claim(
+                fact_id="assumption:" + hashlib.sha1(thing.lower().encode()).hexdigest()[:10],
+                fact_quote="", event_quote=sentence_at(text, m.start()), relation=UNCONFIRMED,
+                assumption=f"{thing[0].upper()}{thing[1:]} exists and provides what this work needs",
+                explanation=f"Nothing verified describes {thing}; if it differs, the design built on it changes.",
+            )]
+        return []

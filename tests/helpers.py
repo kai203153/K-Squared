@@ -24,7 +24,8 @@ class AlignTestCase(unittest.TestCase):
         self.home = Path(tempfile.mkdtemp(prefix="align-test-"))
         self.addCleanup(shutil.rmtree, self.home, True)
         patcher = mock.patch.dict(os.environ, {"ALIGN_HOME": str(self.home), "ALIGN_DETECTOR": "rules",
-                                               "ALIGN_GATE": "off", "ALIGN_NOTIFY": "off", **self.env})
+                                               "ALIGN_GATE": "off", "ALIGN_NOTIFY": "off",
+                                               "ALIGN_POPUP_DELAY": "0", **self.env})
         patcher.start()
         self.addCleanup(patcher.stop)
         os.environ.pop("ALIGN_TOKEN", None)

@@ -87,6 +87,17 @@ class ServerTests(AlignTestCase):
         self.assertIn("already exists", out["system_message"])
         self.assertEqual(self.hook("n", "prompt"), {"decision": "allow"})
 
+    def test_next_prompt_acknowledges_a_raised_unconfirmed_assumption(self):
+        event_id = json.loads(self.post_prompt(SCENARIOS["unconfirmed"]["prompt"], session="k")[1])["event_id"]
+        out = self.hook("k", "prompt", event_id=event_id)
+        self.assertIn("You might be operating on an assumption", out["system_message"])
+        self.assertIn("ask the engineer to confirm it", out["additional_context"])
+        self.post_prompt("Yes, the payments API has an orders endpoint. Go ahead.", session="k")
+        self.assertNotIn("payments API", self.hook("k", "prompt").get("system_message", ""))  # No nagging.
+        state = json.loads(self.req("GET", "/api/state?task=DE-104")[1])
+        f = next(x for x in state["findings"] if x["session"] == "k" and "payments API" in x["assumption"])
+        self.assertEqual((f["status"], f["responses"][0]["response"]), ("acknowledged", "acknowledge"))
+
     def test_plan_hook_sends_plan_back_when_gated(self):
         r = self.req("POST", "/api/events", {"task_id": "DE-104", "session": "p", "kind": "plan",
                                              "content": SCENARIOS["positive"]["prompt"]})

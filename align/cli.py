@@ -16,10 +16,10 @@ HOOK = ROOT / "hooks" / "align_hook.py"
 PRECOMMIT = ROOT / "hooks" / "align_precommit.py"
 PRECOMMIT_MARKER = "# align-precommit"
 TOOLS = "Write|Edit|MultiEdit|NotebookEdit|Bash|ExitPlanMode"
-# Prompt and plan hooks wait for analysis (ALIGN_NUDGE_WAIT, default 10 s), so allow more time.
+# Prompt and plan hooks wait for analysis (ALIGN_NUDGE_WAIT, default 15 s), so allow more time.
 HOOK_EVENTS = {
-    "UserPromptSubmit": ("prompt", None, 15),
-    "PreToolUse": ("pre_tool", TOOLS, 15),
+    "UserPromptSubmit": ("prompt", None, 20),
+    "PreToolUse": ("pre_tool", TOOLS, 20),
     "PostToolUse": ("post_tool", TOOLS, 5),
 }
 

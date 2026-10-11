@@ -18,7 +18,8 @@ class StageTests(AlignTestCase):
         stages = {k: classify(v["prompt"]) for k, v in SCENARIOS.items()}
         self.assertEqual(stages, {"negative": "exploring", "positive": "committed",
                                   "corrective": "exploring", "legitimate": "exploring",
-                                  "duplicate": "committed", "retry": "committed"})
+                                  "duplicate": "committed", "retry": "committed",
+                                  "unconfirmed": "committed"})
 
     def test_negated_execute_is_not_commitment(self):
         self.assertNotEqual(classify("Do not create anything yet."), "committed")
@@ -50,6 +51,15 @@ class RulesTests(AlignTestCase):
         # The docstring is searchable, so a differently named helper is still found.
         self.assertEqual(store().get(self.claims(SCENARIOS["retry"]["prompt"])[0].fact_id).subject, "with_backoff")
 
+    def test_unknown_external_dependency_is_an_unconfirmed_assumption(self):
+        claims = self.claims(SCENARIOS["unconfirmed"]["prompt"])
+        self.assertEqual([c.relation for c in claims], ["unconfirmed"])
+        self.assertEqual(claims[0].assumption, "The payments API exists and provides what this work needs")
+        self.assertEqual(claims[0].fact_quote, "")
+        # Known systems and negated mentions are not flagged.
+        self.assertEqual(self.claims("Upload the daily report to the analytics lake bucket now."), [])
+        self.assertEqual(self.claims("Do not call the payments API from the job."), [])
+
     def test_unrelated_or_negated_creation_is_not_flagged(self):
         self.assertEqual(self.claims("Create a new dashboard for marketing campaign metrics."), [])
         self.assertEqual(self.claims("Do not write a new event schema validator."), [])
@@ -80,6 +90,14 @@ class GroundingTests(AlignTestCase):
         self.assertEqual(self.reasons(Claim("ADR-12", DECISION, "rewrite everything in Rust", "")),
                          ["event_quote_not_in_event"])
         self.assertEqual(self.reasons(Claim("ADR-12", DECISION, EVENT, ""), stage="exploring"), ["not_committed"])
+
+    def test_unconfirmed_needs_quote_assumption_and_commitment(self):
+        good = Claim("assumption:x", "", "Create a new standalone AWS Lambda", "", "unconfirmed", "Lambda is allowed")
+        self.assertEqual(self.reasons(good), ["ok"])
+        self.assertEqual(self.reasons(Claim("assumption:x", "", "made up words", "", "unconfirmed", "x")),
+                         ["event_quote_not_in_event"])
+        self.assertEqual(self.reasons(Claim("assumption:x", "", EVENT, "", "unconfirmed", " ")), ["missing_assumption"])
+        self.assertEqual(self.reasons(good, stage="exploring"), ["not_committed"])
 
     def test_code_fact_quote_must_match_code_line(self):
         fact = next(f for f in self.facts if f.subject == "validate_event")

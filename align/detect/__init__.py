@@ -8,10 +8,12 @@ from dataclasses import dataclass, field
 
 from ..config import settings
 
-# How an assumption relates to a verified fact.
-CONTRADICTED = "contradicted"      # The fact says otherwise ("ADR-12: do not build a new Lambda service").
+# How an assumption relates to verified knowledge.
+CONTRADICTED = "contradicted"      # A fact says otherwise ("ADR-12: do not build a new Lambda service").
 ALREADY_EXISTS = "already_exists"  # The engineer assumes something is missing that already exists.
-RELATIONS = (CONTRADICTED, ALREADY_EXISTS)
+UNCONFIRMED = "unconfirmed"        # A material assumption nothing verified confirms. The engineer
+                                   # should notice and acknowledge it; there is no fact to cite.
+RELATIONS = (CONTRADICTED, ALREADY_EXISTS, UNCONFIRMED)
 
 
 @dataclass
@@ -34,17 +36,24 @@ class Analysis:
 
 
 def select_detector(kind: str):
-    """Pick the detector for an event. Tool events carry only metadata, so they use rules."""
+    """Pick the detector for an event. Tool events carry only metadata, so they use rules.
+
+    auto: the Claude API when the SDK and a key are present, else headless Claude Code
+    (`claude -p`, the engineer's own subscription), else the offline rules.
+    """
+    from .claude import ClaudeDetector
+    from .claude_code import ClaudeCodeDetector
     from .rules import RulesDetector
 
     mode = settings().detector
     if kind not in ("prompt", "plan") or mode == "rules":
         return RulesDetector()
-    from .claude import ClaudeDetector
-
-    detector = ClaudeDetector()
-    if detector.available():
-        return detector
-    if mode == "claude":
-        raise RuntimeError("ALIGN_DETECTOR=claude but the anthropic SDK is not installed")
+    candidates = {"claude": [ClaudeDetector], "claude-code": [ClaudeCodeDetector],
+                  "auto": [ClaudeDetector, ClaudeCodeDetector]}[mode]
+    for cls in candidates:
+        detector = cls()
+        if detector.available():
+            return detector
+    if mode != "auto":
+        raise RuntimeError(f"ALIGN_DETECTOR={mode} is not available on this machine")
     return RulesDetector()

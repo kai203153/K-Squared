@@ -20,7 +20,7 @@ from pathlib import Path
 
 URL = os.environ.get("ALIGN_URL", "http://127.0.0.1:8765")
 HOME = Path(os.environ.get("ALIGN_HOME", Path(__file__).resolve().parents[1] / ".align"))
-NUDGE_WAIT = float(os.environ.get("ALIGN_NUDGE_WAIT", "10"))
+NUDGE_WAIT = float(os.environ.get("ALIGN_NUDGE_WAIT", "15"))
 SECRET = re.compile(r"(?i)(api[_-]?key|password|passwd|secret|token)\s*[:=]\s*\S+")
 EVENT_NAMES = {"prompt": "UserPromptSubmit", "plan": "PreToolUse", "pre_tool": "PreToolUse",
                "post_tool": "PostToolUse"}

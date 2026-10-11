@@ -9,7 +9,7 @@ import time
 
 from . import db, engine
 from .config import GATE_MODES, settings
-from .detect import ALREADY_EXISTS
+from .detect import ALREADY_EXISTS, UNCONFIRMED
 
 HOOKS = ("prompt", "plan", "pre_tool", "post_tool")
 # Only tools that change files are paused; reads and shell exploration (e.g. opening the ADR) are not.
@@ -17,6 +17,12 @@ GATED_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit")
 TOOL_WAIT = 2.0
 MAX_WAIT = 30.0
 RELATION_LABEL = {"contradicted": "contradicts", ALREADY_EXISTS: "already exists"}
+ASK_ABOUT_IT = ("Before continuing, point this out to the engineer briefly, cite the source, and ask "
+                "how they want to proceed. They may have context Align lacks; let them decide. "
+                "Don't lecture, and don't repeat this if they have already answered it.")
+ASK_TO_ACKNOWLEDGE = ("Before building on an unconfirmed assumption, state it plainly in one line and "
+                      "ask the engineer to confirm it or tell you what is actually true. This is so "
+                      "they consciously acknowledge it, not a blocker: keep it to one short question.")
 
 
 def _pending(task_id: str, session: str, event_id: str | None) -> bool:
@@ -38,22 +44,30 @@ def for_claude(findings: list[dict]) -> str:
     lines = ["Align checked the engineer's request against verified team knowledge (confirmed "
              "decisions and production code) and found assumptions worth raising:"]
     for i, f in enumerate(findings, 1):
-        what = ("already exists in production code" if f["relation"] == ALREADY_EXISTS
-                else "contradicts a confirmed " + (f["fact_kind"] or "decision"))
-        lines.append(
-            f"{i}. [{f['severity']}] Assumption: {f['assumption'] or f['event_quote']}\n"
-            f"   Engineer said: \"{f['event_quote']}\"\n"
-            f"   Verified fact ({f['fact_id']}, {f['fact_source']}) {what}: \"{f['fact_quote']}\"\n"
-            f"   Why it matters: {f['explanation']}")
-    lines.append("Before continuing, point this out to the engineer briefly, cite the source, and ask "
-                 "how they want to proceed. They may have context Align lacks; let them decide. "
-                 "Don't lecture, and don't repeat this if they have already answered it.")
+        lines.append(f"{i}. [{f['severity']}] Assumption: {f['assumption'] or f['event_quote']}\n"
+                     f"   Engineer said: \"{f['event_quote']}\"")
+        if f["relation"] == UNCONFIRMED:
+            lines.append("   Nothing verified confirms or rules this out.")
+        else:
+            what = ("already exists in production code" if f["relation"] == ALREADY_EXISTS
+                    else "contradicts a confirmed " + (f["fact_kind"] or "decision"))
+            lines.append(f"   Verified fact ({f['fact_id']}, {f['fact_source']}) {what}: \"{f['fact_quote']}\"")
+        lines.append(f"   Why it matters: {f['explanation']}")
+    if any(f["relation"] != UNCONFIRMED for f in findings):
+        lines.append(ASK_ABOUT_IT)
+    if any(f["relation"] == UNCONFIRMED for f in findings):
+        lines.append(ASK_TO_ACKNOWLEDGE)
     return "\n".join(lines)
 
 
 def for_engineer(findings: list[dict]) -> str:
-    parts = [f"[{f['severity']}] {f['fact_id']} {RELATION_LABEL.get(f['relation'], f['relation'])}: "
-             f"\"{f['fact_quote'][:120]}\"" for f in findings]
+    parts = []
+    for f in findings:
+        if f["relation"] == UNCONFIRMED:
+            parts.append(f"[{f['severity']}] You might be operating on an assumption: {f['assumption']}")
+        else:
+            parts.append(f"[{f['severity']}] {f['fact_id']} {RELATION_LABEL.get(f['relation'], f['relation'])}: "
+                         f"\"{f['fact_quote'][:120]}\"")
     return "Align: check your assumptions. " + " | ".join(parts)
 
 
@@ -72,6 +86,9 @@ def respond(task_id: str, session: str, hook: str, mode: str | None = None,
         raise ValueError(f"mode must be one of {GATE_MODES}")
     if wait is None:
         wait = settings().nudge_wait if hook in ("prompt", "plan") else TOOL_WAIT
+    if hook == "prompt":
+        # A new prompt after Claude raised an unconfirmed assumption means the engineer saw it.
+        engine.acknowledge_delivered(task_id, session)
     wait_for_analysis(task_id, session, event_id, wait)
 
     open_ = engine.open_findings(task_id, session)

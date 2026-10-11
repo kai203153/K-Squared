@@ -1,7 +1,39 @@
 {
   "hooks": {
-    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "ALIGN_TASK_ID=DE-104 ALIGN_GATE=once python3 \"$CLAUDE_PROJECT_DIR/../../../hooks/align_hook.py\" prompt", "timeout": 15}]}],
-    "PreToolUse": [{"matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash|ExitPlanMode", "hooks": [{"type": "command", "command": "ALIGN_TASK_ID=DE-104 ALIGN_GATE=once python3 \"$CLAUDE_PROJECT_DIR/../../../hooks/align_hook.py\" pre_tool", "timeout": 15}]}],
-    "PostToolUse": [{"matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash|ExitPlanMode", "hooks": [{"type": "command", "command": "ALIGN_TASK_ID=DE-104 ALIGN_GATE=once python3 \"$CLAUDE_PROJECT_DIR/../../../hooks/align_hook.py\" post_tool", "timeout": 5}]}]
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "ALIGN_TASK_ID=DE-104 ALIGN_GATE=once ALIGN_HOME=/Users/kmizuno/project/speedhack/K-Squared/.align ALIGN_URL=http://127.0.0.1:8765 /Library/Frameworks/Python.framework/Versions/3.11/bin/python3 /Users/kmizuno/project/speedhack/K-Squared/hooks/align_hook.py prompt",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash|ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "ALIGN_TASK_ID=DE-104 ALIGN_GATE=once ALIGN_HOME=/Users/kmizuno/project/speedhack/K-Squared/.align ALIGN_URL=http://127.0.0.1:8765 /Library/Frameworks/Python.framework/Versions/3.11/bin/python3 /Users/kmizuno/project/speedhack/K-Squared/hooks/align_hook.py pre_tool",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash|ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "ALIGN_TASK_ID=DE-104 ALIGN_GATE=once ALIGN_HOME=/Users/kmizuno/project/speedhack/K-Squared/.align ALIGN_URL=http://127.0.0.1:8765 /Library/Frameworks/Python.framework/Versions/3.11/bin/python3 /Users/kmizuno/project/speedhack/K-Squared/hooks/align_hook.py post_tool",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
   }
 }

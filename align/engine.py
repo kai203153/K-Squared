@@ -6,7 +6,7 @@ import uuid
 from dataclasses import asdict
 
 from . import context, db, notify
-from .detect import ALREADY_EXISTS, Analysis, Claim, select_detector
+from .detect import ALREADY_EXISTS, UNCONFIRMED, Analysis, Claim, select_detector
 from .detect.grounding import verify
 from .detect.rules import RulesDetector
 from .knowledge import DECISION_KINDS, Fact, store
@@ -17,6 +17,7 @@ EVENT_KINDS = ("prompt", "plan", "pre_tool", "post_tool")
 MAX_CONTENT = 6000
 CANDIDATE_FACTS = 25
 RESPONSES = {
+    "acknowledge": "acknowledged",  # "Yes, I'm aware I'm assuming this."
     "use_existing": "resolved",
     "new_evidence": "needs_review",
     "ask_manager": "needs_review",
@@ -67,9 +68,13 @@ def candidate_facts(task_id: str, content: str) -> list[Fact]:
     return decisions + related
 
 
-def severity(claim: Claim, fact: Fact) -> str:
+def severity(claim: Claim, fact: Fact | None) -> str:
+    """HIGH: a confirmed decision rules it out. MEDIUM: production code disagrees or already
+    has it. LOW: an unconfirmed assumption the engineer should acknowledge."""
+    if claim.relation == UNCONFIRMED or fact is None:
+        return "LOW"
     if claim.relation == ALREADY_EXISTS:
-        return "LOW"  # A pointer to existing code: worth checking, never a blocker.
+        return "MEDIUM"
     return "HIGH" if fact.kind in DECISION_KINDS else "MEDIUM"
 
 
@@ -116,14 +121,16 @@ def analyze_event(event_id: str) -> dict:
                 (str(uuid.uuid4()), event_id, claim.fact_id, json.dumps(asdict(claim)), reason, now),
             )
         for claim in grounded:
+            # Once seen in this session (open, acknowledged, under review or dismissed), don't raise it
+            # again. Only a resolved finding can recur, e.g. the engineer drifts back to the old plan.
             existing = c.execute(
-                "SELECT id FROM findings WHERE task_id=? AND session=? AND fact_id=? AND status='open'",
+                "SELECT id FROM findings WHERE task_id=? AND session=? AND fact_id=? AND status!='resolved'",
                 (ev["task_id"], ev["session"], claim.fact_id),
             ).fetchone()
             if existing:
                 finding_ids.append(existing["id"])
                 continue
-            fact = by_id[claim.fact_id]
+            fact = by_id.get(claim.fact_id)
             sev = severity(claim, fact)
             row = {
                 "id": str(uuid.uuid4()), "task_id": ev["task_id"], "session": ev["session"],
@@ -133,7 +140,8 @@ def analyze_event(event_id: str) -> dict:
                 # Exposure models reworking a committed direction; it doesn't apply to a pointer.
                 "impact_min": low if sev == "HIGH" else 0, "impact_max": high if sev == "HIGH" else 0,
                 "created": now, "updated": now, "relation": claim.relation,
-                "assumption": claim.assumption, "fact_kind": fact.kind, "fact_source": fact.source,
+                "assumption": claim.assumption, "fact_kind": fact.kind if fact else "assumption",
+                "fact_source": fact.source if fact else "",
             }
             c.execute(f"INSERT INTO findings({','.join(row)}) VALUES({','.join('?' * len(row))})",
                       list(row.values()))
@@ -166,7 +174,10 @@ def mark_failed(event_id: str, error: str) -> None:
 
 def clarification_draft(finding: dict, task: dict | None) -> str:
     task_name = f"{finding['task_id']} ({task['title']})" if task else finding["task_id"]
-    if finding["relation"] == ALREADY_EXISTS:
+    if finding["relation"] == UNCONFIRMED:
+        ask = (f"I'm assuming that {finding['assumption'][0].lower()}{finding['assumption'][1:].rstrip('.')}. "
+               f"Can you confirm that, or point me to where it's documented?")
+    elif finding["relation"] == ALREADY_EXISTS:
         ask = (f"I was about to build something new, but {finding['fact_source']} already has "
                f"\"{finding['fact_quote']}\". Should I reuse that, or is there a reason it doesn't fit?")
     else:
@@ -192,6 +203,17 @@ def respond(finding_id: str, response: str, note: str = "") -> dict:
         c.execute("UPDATE findings SET status=?, updated=? WHERE id=?",
                   (RESPONSES[response], time.time(), finding_id))
     return {"ok": True, "response": response, "status": RESPONSES[response], "draft": draft}
+
+
+def acknowledge_delivered(task_id: str, session: str) -> list[str]:
+    """The engineer replied after Claude raised an unconfirmed assumption: record that they saw it."""
+    with db.connect() as c:
+        ids = [r["id"] for r in c.execute(
+            "SELECT id FROM findings WHERE task_id=? AND session=? AND status='open' AND relation=? "
+            "AND delivered_at IS NOT NULL", (task_id, session, UNCONFIRMED))]
+    for fid in ids:
+        respond(fid, "acknowledge", "Replied in the chat after Align raised it.")
+    return ids
 
 
 def open_findings(task_id: str, session: str | None = None) -> list[dict]:

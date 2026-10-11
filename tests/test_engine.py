@@ -1,8 +1,10 @@
+import json
 import os
 from unittest import mock
 
 from align import engine
 from align.detect import claude as claude_mod
+from align.detect import claude_code as cc_mod
 
 from .helpers import SCENARIOS, AlignTestCase, FakeClaude
 
@@ -27,10 +29,10 @@ class EngineTests(AlignTestCase):
         self.assertIn("Lambda", f["event_quote"])
         self.assertEqual((f["impact_min"], f["impact_max"]), (2.26, 4.52))
 
-    def test_existing_code_finding_is_low_with_no_exposure(self):
+    def test_existing_code_finding_is_medium_with_no_exposure(self):
         run(SCENARIOS["duplicate"]["prompt"])
         f = engine.snapshot("DE-104")["findings"][0]
-        self.assertEqual((f["severity"], f["relation"], f["fact_kind"]), ("LOW", "already_exists", "component"))
+        self.assertEqual((f["severity"], f["relation"], f["fact_kind"]), ("MEDIUM", "already_exists", "component"))
         self.assertEqual((f["impact_min"], f["impact_max"]), (0, 0))
         self.assertEqual(f["fact_source"], "lib/events/schema.py:13")
         self.assertIn("lib/events/schema.py", engine.respond(f["id"], "ask_manager")["draft"])
@@ -81,7 +83,16 @@ class EngineTests(AlignTestCase):
     def test_open_findings_sorted_by_severity(self):
         run(SCENARIOS["duplicate"]["prompt"])
         run(POSITIVE)
-        self.assertEqual([f["severity"] for f in engine.open_findings("DE-104", "s1")], ["HIGH", "LOW"])
+        run(SCENARIOS["unconfirmed"]["prompt"])
+        self.assertEqual([f["severity"] for f in engine.open_findings("DE-104", "s1")], ["HIGH", "MEDIUM", "LOW"])
+
+    def test_unconfirmed_assumption_is_low_and_can_be_acknowledged(self):
+        fid = run(SCENARIOS["unconfirmed"]["prompt"])["findings"][0]
+        f = engine.open_findings("DE-104")[0]
+        self.assertEqual((f["severity"], f["relation"], f["fact_kind"], f["fact_source"]),
+                         ("LOW", "unconfirmed", "assumption", ""))
+        self.assertIn("payments API", engine.respond(fid, "ask_manager")["draft"])
+        self.assertEqual(engine.respond(fid, "acknowledge")["status"], "acknowledged")
 
 
 class ClaudeDetectorTests(AlignTestCase):
@@ -148,6 +159,36 @@ class ClaudeDetectorTests(AlignTestCase):
 class AutoModeTests(AlignTestCase):
     env = {"ALIGN_DETECTOR": "auto"}
 
-    def test_auto_without_sdk_uses_rules(self):
-        with mock.patch.object(claude_mod.ClaudeDetector, "available", lambda self: False):
+    def test_auto_without_any_claude_uses_rules(self):
+        with mock.patch.object(claude_mod.ClaudeDetector, "available", lambda self: False), \
+                mock.patch.object(cc_mod.ClaudeCodeDetector, "available", lambda self: False):
             self.assertEqual(run(POSITIVE)["detector"], "rules")
+
+    def test_auto_without_api_key_uses_claude_code(self):
+        payload = {"is_error": False, "structured_output": {"stage": "committed", "statement": "x", "assumptions": [
+            {"assumption": "Order events carry a customer_id", "relation": "unconfirmed", "fact_id": "",
+             "fact_quote": "", "event_quote": "backfills order events", "explanation": "Joins break."},
+            {"assumption": "a", "relation": "unconfirmed", "fact_id": "", "fact_quote": "",
+             "event_quote": "payments API", "explanation": "b"},
+            {"assumption": "third one is dropped", "relation": "unconfirmed", "fact_id": "", "fact_quote": "",
+             "event_quote": "nightly job", "explanation": "c"}]}}
+        done = mock.Mock(returncode=0, stdout=json.dumps(payload), stderr="")
+        with mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""}), \
+                mock.patch.object(cc_mod.ClaudeCodeDetector, "available", lambda self: True), \
+                mock.patch.object(cc_mod.ClaudeCodeDetector, "__init__", lambda self, binary=None: setattr(self, "binary", "claude")), \
+                mock.patch("subprocess.run", return_value=done) as call:
+            result = run(SCENARIOS["unconfirmed"]["prompt"])
+        self.assertEqual((result["detector"], len(result["findings"])), ("claude-code", 2))
+        cmd = call.call_args[0][0]
+        self.assertEqual(cmd[cmd.index("--tools") + 1], "")
+        self.assertIn("--no-session-persistence", cmd)
+        self.assertIn("--json-schema", cmd)
+        self.assertEqual(call.call_args.kwargs["cwd"], self.home)
+
+    def test_claude_code_failure_falls_back_to_rules(self):
+        with mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""}), \
+                mock.patch.object(cc_mod.ClaudeCodeDetector, "available", lambda self: True), \
+                mock.patch.object(cc_mod.ClaudeCodeDetector, "__init__", lambda self, binary=None: setattr(self, "binary", "claude")), \
+                mock.patch("subprocess.run", return_value=mock.Mock(returncode=1, stdout="", stderr="not logged in")):
+            result = run(POSITIVE)
+        self.assertEqual((result["detector"], result["notes"]), ("rules", ["claude-code_failed: RuntimeError"]))

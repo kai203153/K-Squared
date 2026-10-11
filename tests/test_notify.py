@@ -18,14 +18,27 @@ def finding(prompt):
 class NotifyTests(AlignTestCase):
     env = {"ALIGN_NOTIFY": "on"}
 
-    def test_low_is_a_banner_saying_the_assumption_cant_be_confirmed(self):
-        with mock.patch("subprocess.Popen") as popen:
-            notify.notify_finding(finding(SCENARIOS["duplicate"]["prompt"]))
-        cmd = popen.call_args[0][0]
-        self.assertIn("display notification (item 2 of argv) with title (item 1 of argv) subtitle (item 3 of argv)", cmd)
-        self.assertEqual(cmd[-3], "Align: assumption to double-check")
-        self.assertIn("assumption Align can't confirm", cmd[-2])
-        self.assertTrue(cmd[-1].startswith("LOW"))
+    def alert_args(self, prompt, button="Got it"):
+        with mock.patch("subprocess.run", return_value=mock.Mock(stdout=button + "\n")) as run, \
+                mock.patch("subprocess.Popen") as popen, \
+                mock.patch("threading.Thread", side_effect=lambda target, **kw: mock.Mock(start=target)):
+            f = finding(prompt)
+            notify.notify_finding(f)
+        return f, run.call_args[0][0], popen
+
+    def test_low_is_an_informational_alert_that_closes_itself(self):
+        _, cmd, popen = self.alert_args(SCENARIOS["unconfirmed"]["prompt"])
+        self.assertEqual(cmd[-4], "Align: you might be operating on an assumption")
+        self.assertIn("The payments API exists and provides what this work needs.", cmd[-3])
+        self.assertEqual((cmd[-2], cmd[-1]), ("informational", "12"))
+        popen.assert_not_called()
+
+    def test_medium_is_a_warning_alert_with_show_me(self):
+        f, cmd, popen = self.alert_args(SCENARIOS["duplicate"]["prompt"], button="Show me")
+        self.assertEqual(cmd[-4], "Align: check existing code first")
+        self.assertIn("validate_event already exists", cmd[-3])
+        self.assertEqual(cmd[-2], "warning")
+        self.assertEqual(popen.call_args[0][0], ["open", f"http://127.0.0.1:8765/#f-{f['id']}"])
 
     def test_high_is_a_dialog_with_explore_and_ask_manager(self):
         f = finding(SCENARIOS["positive"]["prompt"])
@@ -46,6 +59,16 @@ class NotifyTests(AlignTestCase):
             notify.notify_finding(f)
         self.assertIn("coming soon", popen.call_args[0][0][-1])
         self.assertEqual(engine.open_findings("DE-104")[0]["status"], "open")
+
+    def test_popups_wait_like_a_real_investigation(self):
+        with mock.patch.dict(os.environ, {"ALIGN_POPUP_DELAY": "5"}):
+            delays = {sev: [notify.delay_for({"severity": sev}) for _ in range(50)] for sev in ("LOW", "HIGH")}
+            with mock.patch("threading.Timer") as timer:
+                notify.notify_finding({"severity": "LOW"})
+        self.assertTrue(all(3 <= d <= 5 for d in delays["LOW"]))
+        self.assertTrue(all(5.5 <= d <= 7.5 for d in delays["HIGH"]))
+        self.assertGreater(timer.call_args[0][0], 0)
+        self.assertTrue(timer.return_value.daemon)
 
     def test_off_means_silent(self):
         with mock.patch.dict(os.environ, {"ALIGN_NOTIFY": "off"}), mock.patch("subprocess.Popen") as popen:

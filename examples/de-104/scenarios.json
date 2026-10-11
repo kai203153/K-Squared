@@ -22,5 +22,9 @@
   "retry": {
     "prompt": "Implement a custom retry helper with backoff for the order event writer.",
     "expect_finding": true
+  },
+  "unconfirmed": {
+    "prompt": "Add a nightly job that backfills order events from the payments API.",
+    "expect_finding": true
   }
 }

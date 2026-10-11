@@ -1,13 +1,16 @@
 """The authoritative check between a detector's claims and a raised finding.
 
-A claim becomes a finding only if it cites a verified fact that is current and applies to
+A conflict becomes a finding only if it cites a verified fact that is current and applies to
 the task, quotes that fact verbatim, quotes the engineer verbatim, and the engineer has
 committed rather than explored. A model cannot invent a conflict past this point.
+
+An *unconfirmed* assumption has no fact to cite; it must still quote the engineer verbatim,
+state the assumption, and come from a commitment.
 """
 import re
 
 from ..knowledge import Fact
-from . import RELATIONS, Analysis, Claim
+from . import RELATIONS, UNCONFIRMED, Analysis, Claim
 
 MIN_FACT_QUOTE = 8
 MIN_EVENT_QUOTE = 6
@@ -23,6 +26,14 @@ def check(claim: Claim, analysis: Analysis, content: str, facts: dict[str, Fact]
     """Return None if the claim is grounded, otherwise the reason it was rejected."""
     if claim.relation not in RELATIONS:
         return "invalid_relation"
+    if claim.relation == UNCONFIRMED:
+        # Nothing to cite, so the engineer's own words and a clear assumption are the evidence.
+        if not claim.assumption.strip() or len(claim.assumption) > 400:
+            return "missing_assumption"
+        eq = _norm(claim.event_quote)
+        if len(eq) < MIN_EVENT_QUOTE or eq not in _norm(content):
+            return "event_quote_not_in_event"
+        return None if analysis.stage == "committed" else "not_committed"
     fact = facts.get(claim.fact_id)
     if fact is None:
         return "unknown_fact"
