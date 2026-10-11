@@ -5,5 +5,5 @@ set -e
 cd "$(dirname "$0")/.."
 python3 -m align init --example de-104
 python3 -m align reset
-echo "Dashboard: http://127.0.0.1:8765   Demo workspace: $(pwd)/examples/de-104/demo_repo"
+echo "Dashboard: http://127.0.0.1:8765   Team view: http://127.0.0.1:8765/manager   Demo workspace: $(pwd)/examples/de-104/demo_repo"
 exec python3 -m align serve

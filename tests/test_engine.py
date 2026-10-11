@@ -151,3 +151,37 @@ class AutoModeTests(AlignTestCase):
     def test_auto_without_sdk_uses_rules(self):
         with mock.patch.object(claude_mod.ClaudeDetector, "available", lambda self: False):
             self.assertEqual(run(POSITIVE)["detector"], "rules")
+
+
+class TeamTests(AlignTestCase):
+    def status(self, name):
+        return next(e for e in engine.team("DE-104")["engineers"] if e["name"] == name)
+
+    def send(self, content, engineer, kind="prompt"):
+        eid = engine.ingest({"task_id": "DE-104", "session": engineer, "kind": kind,
+                             "content": content, "engineer": engineer})
+        return engine.analyze_event(eid)
+
+    def test_status_follows_findings_and_responses(self):
+        self.send(SCENARIOS["duplicate"]["prompt"], "Sam Okafor")
+        sam = self.status("Sam Okafor")
+        self.assertEqual(sam["status"], "flagged")
+        engine.respond(sam["findings"][0]["id"], "use_existing")
+        self.assertEqual(self.status("Sam Okafor")["status"], "aligned")
+
+        self.send(SCENARIOS["retry"]["prompt"], "Priya Nair", kind="plan")
+        engine.respond(self.status("Priya Nair")["findings"][0]["id"], "new_evidence", "jitter needed")
+        self.assertEqual(self.status("Priya Nair")["status"], "needs_review")
+
+    def test_direction_prefers_prompt_over_tool_call(self):
+        self.send(POSITIVE, "Alex Rivera")
+        self.send("Write lambda_handler.py", "Alex Rivera", kind="pre_tool")
+        alex = self.status("Alex Rivera")
+        self.assertIn("Lambda ingestion service", alex["direction"])
+        self.assertEqual(len(alex["findings"]), 1)  # The tool call re-matches the same open finding.
+        self.assertEqual(alex["exposure"], 4.52)
+
+    def test_unassigned_engineer_still_appears(self):
+        self.send(SCENARIOS["negative"]["prompt"], "Contractor")
+        e = self.status("Contractor")
+        self.assertEqual((e["assigned"], e["status"]), (False, "exploring"))

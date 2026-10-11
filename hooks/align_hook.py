@@ -20,6 +20,8 @@ from pathlib import Path
 
 URL = os.environ.get("ALIGN_URL", "http://127.0.0.1:8765")
 HOME = Path(os.environ.get("ALIGN_HOME", Path(__file__).resolve().parents[1] / ".align"))
+# Who is working, for the manager view. Read at run time so a shared settings.json works for everyone.
+ENGINEER = os.environ.get("ALIGN_ENGINEER") or os.environ.get("USER") or "unknown"
 NUDGE_WAIT = float(os.environ.get("ALIGN_NUDGE_WAIT", "10"))
 SECRET = re.compile(r"(?i)(api[_-]?key|password|passwd|secret|token)\s*[:=]\s*\S+")
 EVENT_NAMES = {"prompt": "UserPromptSubmit", "plan": "PreToolUse", "pre_tool": "PreToolUse",
@@ -84,7 +86,7 @@ def main() -> None:
     if content:
         try:
             event_id = call("POST", "/api/events", {"task_id": task, "session": session, "kind": kind,
-                                                    "content": content}).get("event_id", "")
+                                                    "content": content, "engineer": ENGINEER}).get("event_id", "")
         except Exception:
             pass  # Observation is best-effort; earlier findings can still be delivered.
 
