@@ -6,7 +6,7 @@ import socketserver
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from . import context, engine, gate
+from . import context, engine, nudge
 from .config import ROOT, ensure_token, settings
 from .worker import Worker
 
@@ -78,9 +78,15 @@ def make_server(port: int | None = None, worker: Worker | None = None) -> LocalS
                     self.send_json({"ok": True})
                 elif url.path == "/api/state":
                     self.send_json(engine.snapshot(q.get("task") or None))
-                elif url.path == "/api/gate":
-                    self.send_json(gate.check(q["task"], q["session"], q.get("mode", s.gate),
-                                              float(q.get("wait", gate.MAX_WAIT))))
+                elif url.path == "/api/hook":
+                    self.send_json(nudge.respond(
+                        q["task"], q["session"], q["hook"], q.get("mode") or None, q.get("event_id") or None,
+                        float(q["wait"]) if "wait" in q else None))
+                elif url.path == "/api/findings":
+                    self.send_json(engine.open_findings(q["task"], q.get("session")))
+                elif url.path == "/api/knowledge":
+                    self.send_json(engine.search_knowledge(q.get("q", ""), q.get("task") or None,
+                                                           int(q.get("limit", "20"))))
                 else:
                     self.send_json({"error": "not found"}, 404)
             except (ValueError, KeyError) as e:

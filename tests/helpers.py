@@ -10,6 +10,8 @@ from unittest import mock
 
 from align import context, db
 from align.config import ROOT
+from align.knowledge import store
+from align.knowledge.scan import scan
 
 EXAMPLE = ROOT / "examples" / "de-104"
 SCENARIOS = json.loads((EXAMPLE / "scenarios.json").read_text())
@@ -22,12 +24,14 @@ class AlignTestCase(unittest.TestCase):
         self.home = Path(tempfile.mkdtemp(prefix="align-test-"))
         self.addCleanup(shutil.rmtree, self.home, True)
         patcher = mock.patch.dict(os.environ, {"ALIGN_HOME": str(self.home), "ALIGN_DETECTOR": "rules",
-                                               "ALIGN_GATE": "off", **self.env})
+                                               "ALIGN_GATE": "off", "ALIGN_NOTIFY": "off", **self.env})
         patcher.start()
         self.addCleanup(patcher.stop)
         os.environ.pop("ALIGN_TOKEN", None)
         db.migrate()
         context.import_dir(EXAMPLE)
+        name, facts = scan(EXAMPLE / "demo_repo", working_tree=True)
+        store().replace_code(name, facts)
 
 
 class FakeClaude:

@@ -33,12 +33,13 @@ textarea{width:100%;font:inherit;font-size:14px;border:1px solid var(--line);bor
 code{background:var(--code);padding:2px 5px;border-radius:4px}
 .long{overflow-wrap:anywhere}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .draft{white-space:pre-wrap}
+.focus{outline:2px solid var(--high);outline-offset:6px;border-radius:8px}
 </style>
 </head>
 <body>
 <header>
   <div><h1>ALIGN <span style="font-weight:400;font-size:16px">/ Early Commitment Monitor</span></h1>
-  <div class="sub">Private to you · local only · nothing is sent to anyone</div></div>
+  <div class="sub">Assumption check against verified knowledge · private to you · nothing is sent to anyone</div></div>
   <label class="row" style="color:var(--head-text)">Task <select id="task"></select></label>
 </header>
 <main>
@@ -51,7 +52,10 @@ code{background:var(--code);padding:2px 5px;border-radius:4px}
         <div id="work"></div></div>
     </section>
     <section>
-      <div class="panel"><h2>Authorized records</h2><div id="records"></div></div>
+      <div class="panel"><h2>Ground truth</h2><p class="muted" id="kstats"></p>
+        <div class="row"><input id="kq" placeholder="Search verified knowledge" style="flex:1;font:inherit;padding:7px 9px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--text)"><button class="secondary" id="ksearch">Search</button></div>
+        <div id="facts"></div></div>
+      <div class="panel"><h2>Decision records</h2><div id="records"></div></div>
       <div class="panel"><h2>Captured events</h2><div id="events"></div></div>
       <div class="panel"><h2>Commitments</h2><div id="commitments"></div></div>
     </section>
@@ -66,25 +70,37 @@ const ago = t => { const s = Math.round(Date.now() / 1000 - t); return s < 60 ? 
 let task = null, last = "";
 const notes = {};  // Keep typed notes across re-renders.
 
+const RELATION = {contradicted: "contradicts", already_exists: "already exists"};
 function findingHtml(f) {
-  const cls = f.status === "open" ? "high" : f.status === "resolved" ? "ok" : "";
+  const cls = f.status !== "open" ? (f.status === "resolved" ? "ok" : "") : f.severity === "HIGH" ? "high" : "";
   const draft = (f.responses.find(r => r.draft) || {}).draft;
   const resp = f.responses.map(r => `<div><small>${esc(r.response)} · ${ago(r.created)}${r.note ? " · " + esc(r.note) : ""}</small></div>`).join("");
-  return `<div class="item">
-    <div class="row"><span class="pill ${cls}">${esc(f.severity)} · ${esc(f.status)}</span><span class="pill plain">${esc(f.detector)}</span><small>${esc(f.session)} · ${ago(f.created)}</small></div>
-    <p><strong>Direction conflicts with confirmed <code>${esc(f.record_id)}</code></strong></p>
-    <div class="quotes"><blockquote><small>You said</small>${esc(f.event_quote)}</blockquote><blockquote><small>${esc(f.record_id)} says</small>${esc(f.decision_quote)}</blockquote></div>
+  const title = f.relation === "already_exists" ? "This may already exist in production code" : `Assumption conflicts with verified <code>${esc(f.fact_id)}</code>`;
+  return `<div class="item" id="f-${esc(f.id)}">
+    <div class="row"><span class="pill ${cls}">${esc(f.severity)} · ${esc(f.status)}</span><span class="pill plain">${esc(f.detector)}</span>
+      ${f.delivered_at ? `<span class="pill plain">raised in Claude</span>` : ""}<small>${esc(f.session)} · ${ago(f.created)}</small></div>
+    <p><strong>${title}</strong></p>
+    ${f.assumption ? `<p class="muted">Assumption: ${esc(f.assumption)}</p>` : ""}
+    <div class="quotes"><blockquote><small>You said</small>${esc(f.event_quote)}</blockquote><blockquote><small>${esc(f.fact_source)} ${esc(RELATION[f.relation] || f.relation)}</small>${esc(f.fact_quote)}</blockquote></div>
     <small>${esc(f.explanation)}</small>
-    <p><strong>${f.impact_min.toFixed(1)}–${f.impact_max.toFixed(1)} h</strong> <span class="muted">future work exposure</span></p>
+    ${f.impact_max ? `<p><strong>${f.impact_min.toFixed(1)}–${f.impact_max.toFixed(1)} h</strong> <span class="muted">future work exposure</span></p>` : ""}
     ${resp}
     ${draft ? `<blockquote class="draft"><small>Clarification draft (copy and send yourself)</small>${esc(draft)}</blockquote><button class="secondary" data-copy="${esc(f.id)}">Copy draft</button>` : ""}
     ${f.status === "open" ? `<div>
-      <button data-act="use_existing" data-id="${esc(f.id)}">Use existing decision</button>
+      <button data-act="use_existing" data-id="${esc(f.id)}">${f.relation === "already_exists" ? "Reuse existing code" : "Follow the decision"}</button>
       <button class="secondary" data-act="new_evidence" data-id="${esc(f.id)}">I have new evidence</button>
-      <button class="secondary" data-act="ask_manager" data-id="${esc(f.id)}">Draft clarification</button>
+      <button class="secondary" data-act="ask_manager" data-id="${esc(f.id)}">Draft a question</button>
       <button class="secondary" data-act="dismiss" data-id="${esc(f.id)}">Dismiss</button>
       <textarea rows="2" data-note="${esc(f.id)}" placeholder="Optional note (evidence, why dismissed)">${esc(notes[f.id] || "")}</textarea></div>` : ""}
   </div>`;
+}
+
+async function searchKnowledge() {
+  const q = $("kq").value;
+  const facts = await api(`/api/knowledge?limit=15&q=${encodeURIComponent(q)}${task ? "&task=" + encodeURIComponent(task) : ""}`);
+  $("facts").innerHTML = facts.length ? facts.map(f => `<div class="item"><div class="row"><span class="pill plain">${esc(f.kind)}</span><small>${esc(f.source)}</small></div>
+    <div class="long">${esc(f.statement)}</div>${f.evidence ? `<code class="long">${esc(f.evidence)}</code>` : ""}<div><small>verified by ${esc(f.verified_by)}</small></div></div>`).join("")
+    : `<p class="muted">No verified facts match.</p>`;
 }
 
 function render(s) {
@@ -94,13 +110,16 @@ function render(s) {
     : `<h2>No tasks</h2><p class="muted">Run <code>python3 -m align import &lt;dir&gt;</code> or <code>python3 -m align init --example de-104</code>.</p>`;
   const open = s.findings.filter(f => f.status === "open").length;
   $("count").textContent = `${open} open`; $("count").className = "pill " + (open ? "high" : "plain");
-  $("findings").innerHTML = s.findings.length ? s.findings.map(findingHtml).join("") : `<p class="muted">No conflicts with confirmed records. Align stays silent.</p>`;
+  $("findings").innerHTML = s.findings.length ? s.findings.map(findingHtml).join("") : `<p class="muted">No assumptions conflict with verified knowledge. Align stays silent.</p>`;
+  const k = s.knowledge;
+  $("kstats").textContent = `${k.total} verified facts · ` + Object.entries(k.by_kind).map(([a, b]) => `${b} ${a}`).join(", ")
+    + (k.repos.length ? ` · code from ${k.repos.map(r => `${r.repo}@${r.commit ? r.commit.slice(0, 8) : r.ref}`).join(", ")}` : "");
   $("records").innerHTML = s.records.length ? s.records.map(r => `<div class="item">
     <div class="row"><code>${esc(r.id)}</code><span class="pill ${r.authoritative ? "ok" : "plain"}">${esc(r.status)}${r.authoritative ? "" : " · not enforced"}</span>${r.dismissals ? `<small>${r.dismissals} dismissed</small>` : ""}</div>
     <div><strong>${esc(r.title)}</strong></div><div class="long muted">${esc(r.body)}</div><small>${esc(r.source)}</small></div>`).join("") : `<p class="muted">No records for this task.</p>`;
   $("events").innerHTML = s.events.length ? s.events.map(e => {
     const a = e.analysis || {}, label = e.status === "analyzed" ? (a.result || "analyzed") : e.status;
-    return `<div class="item"><div class="row"><small>${esc(e.kind)} · ${esc(e.session)} · ${ago(e.created)}</small><span class="pill ${a.result === "conflict" ? "high" : "plain"}">${esc(label)}</span>${a.detector ? `<span class="pill plain">${esc(a.detector)}</span>` : ""}</div>
+    return `<div class="item"><div class="row"><small>${esc(e.kind)} · ${esc(e.session)} · ${ago(e.created)}</small><span class="pill ${a.result === "finding" ? "high" : "plain"}">${esc(label)}</span>${a.detector ? `<span class="pill plain">${esc(a.detector)}</span>` : ""}</div>
       <div class="long">${esc(e.content.slice(0, 400))}</div></div>`;
   }).join("") : `<p class="muted">No events yet. Send a prompt from a repo with Align hooks installed.</p>`;
   $("commitments").innerHTML = s.commitments.length ? s.commitments.map(c => `<div class="item"><strong>${esc(c.statement)}</strong><div><small>${esc(c.stage)} · ${esc(c.session)} · ${esc(c.detector)}</small></div></div>`).join("") : `<p class="muted">No recorded commitments.</p>`;
@@ -108,12 +127,22 @@ function render(s) {
     + `<p><strong>${s.exposure[0].toFixed(1)}–${s.exposure[1].toFixed(1)} h</strong> <span class="muted">total exposure</span></p>`;
 }
 
+// "Explore reason" in the desktop alert opens /#f-<finding id>: scroll to it and highlight it.
+let focused = "";
+function focusFinding(force) {
+  const id = location.hash.slice(1), el = id && document.getElementById(id);
+  if (!el) return;
+  el.classList.add("focus");
+  if (force || focused !== id) { focused = id; el.scrollIntoView({behavior: "smooth", block: "center"}); }
+}
+window.addEventListener("hashchange", () => focusFinding(true));
+
 async function refresh() {
   try {
     const s = await api("/api/state" + (task ? "?task=" + encodeURIComponent(task) : ""));
     task = s.task_id;
     const key = JSON.stringify(s);
-    if (key !== last && !document.activeElement?.dataset?.note) { last = key; render(s); }
+    if (key !== last && !document.activeElement?.dataset?.note && document.activeElement?.id !== "kq") { last = key; render(s); focusFinding(false); }
   } catch (e) { $("events").textContent = "Backend unavailable."; }
 }
 
@@ -128,8 +157,10 @@ document.addEventListener("click", async e => {
     try { await navigator.clipboard.writeText(q.textContent.trim()); b.textContent = "Copied"; } catch { b.textContent = "Copy failed"; }
   }
 });
-$("task").addEventListener("change", e => { task = e.target.value; last = ""; refresh(); });
-setInterval(refresh, 1000); refresh();
+$("task").addEventListener("change", e => { task = e.target.value; last = ""; refresh(); searchKnowledge(); });
+$("ksearch").addEventListener("click", searchKnowledge);
+$("kq").addEventListener("keydown", e => { if (e.key === "Enter") searchKnowledge(); });
+setInterval(refresh, 1000); refresh().then(searchKnowledge);
 </script>
 </body>
 </html>

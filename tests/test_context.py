@@ -2,6 +2,7 @@ import tempfile
 from pathlib import Path
 
 from align import context
+from align.knowledge import store
 
 from .helpers import AlignTestCase
 
@@ -26,6 +27,14 @@ class ContextTests(AlignTestCase):
         for name, text in files.items():
             (d / name).write_text(text)
         context.import_dir(d)
+
+    def test_only_confirmed_records_become_knowledge(self):
+        self._import({"p.md": "---\nid: P-1\nstatus: proposed\napplies_to: *\n---\nProposed rule."})
+        self.assertIsNone(store().get("P-1"))
+        self.assertEqual(store().get("ADR-12").verified_by, "record-status:confirmed (docs/ADR-12.md)")
+        # Demoting a record removes it from ground truth.
+        self._import({"a.md": "---\nid: ADR-12\nstatus: superseded\napplies_to: DE-104\n---\nOld."})
+        self.assertIsNone(store().get("ADR-12"))
 
     def test_only_confirmed_current_records_are_authoritative(self):
         self._import({

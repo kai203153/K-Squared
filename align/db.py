@@ -1,8 +1,9 @@
 """SQLite storage with versioned migrations.
 
-Vocabulary: a *record* is authorized context (an ADR, a requirement); a *commitment* is a
-direction a developer took in a session; a *finding* links a commitment to a record it
-contradicts.
+Vocabulary: a *record* is authorized context as written (an ADR, a requirement); a *fact* is
+verified knowledge in the knowledge store (confirmed records and production code); a
+*commitment* is a direction an engineer took in a session; a *finding* is an assumption
+behind that direction which a fact contradicts or already covers.
 """
 import sqlite3
 from contextlib import contextmanager
@@ -39,6 +40,18 @@ MIGRATIONS = [
     CREATE TABLE responses(
         id TEXT PRIMARY KEY, finding_id TEXT NOT NULL, response TEXT NOT NULL, note TEXT,
         draft TEXT, created REAL);
+    """,
+    # v2: findings point at any verified fact (decision or production code), carry the
+    # assumption behind them, and track when the engineer was nudged.
+    """
+    ALTER TABLE findings RENAME COLUMN record_id TO fact_id;
+    ALTER TABLE findings RENAME COLUMN decision_quote TO fact_quote;
+    ALTER TABLE findings ADD COLUMN relation TEXT NOT NULL DEFAULT 'contradicted';
+    ALTER TABLE findings ADD COLUMN assumption TEXT;
+    ALTER TABLE findings ADD COLUMN fact_kind TEXT;
+    ALTER TABLE findings ADD COLUMN fact_source TEXT;
+    ALTER TABLE findings ADD COLUMN delivered_at REAL;
+    ALTER TABLE unverified RENAME COLUMN record_id TO fact_id;
     """,
 ]
 

@@ -14,6 +14,7 @@ import time
 from pathlib import Path
 
 from . import db
+from .knowledge import DECISION_KINDS, Fact, store
 
 RECORD_STATUSES = ("confirmed", "proposed", "superseded")
 LIST_KEYS = ("applies_to", "forbid", "require")
@@ -99,7 +100,27 @@ def import_dir(directory: str | Path) -> dict:
                  r["valid_from"], r["valid_until"], r["source"], r["body"],
                  json.dumps(r["forbid"]), json.dumps(r["require"]), now),
             )
+    sync_knowledge(records)
     return {"tasks": [t["id"] for t in tasks], "records": [r["id"] for r in records]}
+
+
+def record_fact(r: dict) -> Fact:
+    kind = r["kind"] if r["kind"] in DECISION_KINDS else "decision"
+    return Fact(
+        id=r["id"], kind=kind, subject=r["title"], statement=r["body"], source=r["source"],
+        source_type="record", scope=r["applies_to"], forbid=r["forbid"], require=r["require"],
+        valid_from=r["valid_from"], valid_until=r["valid_until"],
+        verified_by=f"record-status:confirmed ({r['source']})",
+    )
+
+
+def sync_knowledge(records: list[dict]) -> None:
+    """Confirmed records become ground truth; anything else is removed from it."""
+    kb = store()
+    kb.upsert([record_fact(r) for r in records if r["status"] == "confirmed"])
+    for r in records:
+        if r["status"] != "confirmed":
+            kb.delete(r["id"])
 
 
 def _row_to_record(row) -> dict:

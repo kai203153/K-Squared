@@ -30,8 +30,8 @@ def _positive_matches(pattern: re.Pattern, text: str) -> bool:
 
 
 def classify(text: str, kind: str = "prompt") -> str:
-    if kind == "pre_tool":
-        return "committed"  # A tool call is an action, not a discussion.
+    if kind in ("pre_tool", "plan"):
+        return "committed"  # A tool call or a finished plan is a decision to act.
     execute = _positive_matches(EXECUTE, text)
     strong = _positive_matches(STRONG_EXECUTE, text)
     explore = bool(EXPLORE.search(text))

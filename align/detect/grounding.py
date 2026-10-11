@@ -1,34 +1,36 @@
 """The authoritative check between a detector's claims and a raised finding.
 
-A claim becomes a finding only if it cites a confirmed, current record that applies to the
-task, quotes that record verbatim, quotes the event verbatim, and the developer has
+A claim becomes a finding only if it cites a verified fact that is current and applies to
+the task, quotes that fact verbatim, quotes the engineer verbatim, and the engineer has
 committed rather than explored. A model cannot invent a conflict past this point.
 """
 import re
 
-from ..context import is_current
-from . import Analysis, Claim
+from ..knowledge import Fact
+from . import RELATIONS, Analysis, Claim
 
-MIN_DECISION_QUOTE = 12
+MIN_FACT_QUOTE = 8
 MIN_EVENT_QUOTE = 6
 
 
 def _norm(s: str) -> str:
     s = s.lower().replace("’", "'").replace("“", '"').replace("”", '"')
     s = re.sub(r"\s+", " ", s).strip()
-    return s.strip(" \"'.,;:")
+    return s.strip(" \"'.,;:`")
 
 
-def check(claim: Claim, analysis: Analysis, content: str, records: dict[str, dict]) -> str | None:
+def check(claim: Claim, analysis: Analysis, content: str, facts: dict[str, Fact]) -> str | None:
     """Return None if the claim is grounded, otherwise the reason it was rejected."""
-    record = records.get(claim.record_id)
-    if record is None:
-        return "unknown_record"
-    if record["status"] != "confirmed" or not is_current(record):
-        return "record_not_authoritative"
-    dq, eq = _norm(claim.decision_quote), _norm(claim.event_quote)
-    if len(dq) < MIN_DECISION_QUOTE or dq not in _norm(record["body"]):
-        return "decision_quote_not_in_record"
+    if claim.relation not in RELATIONS:
+        return "invalid_relation"
+    fact = facts.get(claim.fact_id)
+    if fact is None:
+        return "unknown_fact"
+    if not fact.is_current():
+        return "fact_not_current"
+    fq, eq = _norm(claim.fact_quote), _norm(claim.event_quote)
+    if len(fq) < MIN_FACT_QUOTE or (fq not in _norm(fact.statement) and fq not in _norm(fact.evidence)):
+        return "fact_quote_not_in_fact"
     if len(eq) < MIN_EVENT_QUOTE or eq not in _norm(content):
         return "event_quote_not_in_event"
     if analysis.stage != "committed":
@@ -36,14 +38,14 @@ def check(claim: Claim, analysis: Analysis, content: str, records: dict[str, dic
     return None
 
 
-def verify(analysis: Analysis, content: str, records: list[dict]) -> tuple[list[Claim], list[tuple[Claim, str]]]:
-    by_id = {r["id"]: r for r in records}
+def verify(analysis: Analysis, content: str, facts: list[Fact]) -> tuple[list[Claim], list[tuple[Claim, str]]]:
+    by_id = {f.id: f for f in facts}
     grounded, rejected, seen = [], [], set()
     for claim in analysis.claims:
         reason = check(claim, analysis, content, by_id)
         if reason:
             rejected.append((claim, reason))
-        elif claim.record_id not in seen:
-            seen.add(claim.record_id)
+        elif claim.fact_id not in seen:
+            seen.add(claim.fact_id)
             grounded.append(claim)
     return grounded, rejected

@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 DETECTOR_MODES = ("auto", "claude", "rules")
 GATE_MODES = ("off", "once", "strict")
+NOTIFY_MODES = ("auto", "on", "off")
 
 
 @dataclass(frozen=True)
@@ -19,6 +20,9 @@ class Settings:
     model: str
     gate: str
     llm_timeout: float
+    knowledge_path: Path
+    notify: str
+    nudge_wait: float
 
     @property
     def db_path(self) -> Path:
@@ -36,14 +40,21 @@ class Settings:
 def settings() -> Settings:
     detector = os.environ.get("ALIGN_DETECTOR", "auto")
     gate = os.environ.get("ALIGN_GATE", "off")
+    notify = os.environ.get("ALIGN_NOTIFY", "auto")
+    home = Path(os.environ.get("ALIGN_HOME", ROOT / ".align"))
     return Settings(
-        home=Path(os.environ.get("ALIGN_HOME", ROOT / ".align")),
+        home=home,
         host="127.0.0.1",  # Never bind publicly: the API has only a local shared-secret token.
         port=int(os.environ.get("ALIGN_PORT", "8765")),
         detector=detector if detector in DETECTOR_MODES else "auto",
         model=os.environ.get("ALIGN_MODEL", "claude-opus-5-5"),
         gate=gate if gate in GATE_MODES else "off",
         llm_timeout=float(os.environ.get("ALIGN_LLM_TIMEOUT", "20")),
+        # Ground truth is a separate file so it can be shared by every repo and task.
+        knowledge_path=Path(os.environ.get("ALIGN_KNOWLEDGE", home / "knowledge.db")),
+        notify=notify if notify in NOTIFY_MODES else "auto",
+        # How long the prompt/plan hook waits for analysis before letting Claude continue.
+        nudge_wait=float(os.environ.get("ALIGN_NUDGE_WAIT", "10")),
     )
 
 

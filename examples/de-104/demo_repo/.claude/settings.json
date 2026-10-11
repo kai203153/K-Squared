@@ -1,7 +1,7 @@
 {
   "hooks": {
-    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "ALIGN_TASK_ID=DE-104 ALIGN_GATE=once python3 \"$CLAUDE_PROJECT_DIR/../../../hooks/align_hook.py\" prompt", "timeout": 3}]}],
-    "PreToolUse": [{"matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash", "hooks": [{"type": "command", "command": "ALIGN_TASK_ID=DE-104 ALIGN_GATE=once python3 \"$CLAUDE_PROJECT_DIR/../../../hooks/align_hook.py\" pre_tool", "timeout": 5}]}],
-    "PostToolUse": [{"matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash", "hooks": [{"type": "command", "command": "ALIGN_TASK_ID=DE-104 ALIGN_GATE=once python3 \"$CLAUDE_PROJECT_DIR/../../../hooks/align_hook.py\" post_tool", "timeout": 3}]}]
+    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "ALIGN_TASK_ID=DE-104 ALIGN_GATE=once python3 \"$CLAUDE_PROJECT_DIR/../../../hooks/align_hook.py\" prompt", "timeout": 15}]}],
+    "PreToolUse": [{"matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash|ExitPlanMode", "hooks": [{"type": "command", "command": "ALIGN_TASK_ID=DE-104 ALIGN_GATE=once python3 \"$CLAUDE_PROJECT_DIR/../../../hooks/align_hook.py\" pre_tool", "timeout": 15}]}],
+    "PostToolUse": [{"matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash|ExitPlanMode", "hooks": [{"type": "command", "command": "ALIGN_TASK_ID=DE-104 ALIGN_GATE=once python3 \"$CLAUDE_PROJECT_DIR/../../../hooks/align_hook.py\" post_tool", "timeout": 5}]}]
   }
 }

@@ -1,5 +1,6 @@
-"""Detectors turn one captured event into an Analysis: the developer's stage, a short
-statement of what they are doing, and *claims* of conflict with authorized records.
+"""Detectors turn one captured event (a prompt, a plan, a tool call) into an Analysis: the
+engineer's stage, what they are doing, and the *assumptions* behind it that verified
+knowledge contradicts or already covers.
 
 Claims are never trusted directly; `grounding.verify` decides which become findings.
 """
@@ -7,13 +8,20 @@ from dataclasses import dataclass, field
 
 from ..config import settings
 
+# How an assumption relates to a verified fact.
+CONTRADICTED = "contradicted"      # The fact says otherwise ("ADR-12: do not build a new Lambda service").
+ALREADY_EXISTS = "already_exists"  # The engineer assumes something is missing that already exists.
+RELATIONS = (CONTRADICTED, ALREADY_EXISTS)
+
 
 @dataclass
 class Claim:
-    record_id: str
-    decision_quote: str
+    fact_id: str
+    fact_quote: str
     event_quote: str
     explanation: str
+    relation: str = CONTRADICTED
+    assumption: str = ""
 
 
 @dataclass
@@ -30,7 +38,7 @@ def select_detector(kind: str):
     from .rules import RulesDetector
 
     mode = settings().detector
-    if kind != "prompt" or mode == "rules":
+    if kind not in ("prompt", "plan") or mode == "rules":
         return RulesDetector()
     from .claude import ClaudeDetector
 

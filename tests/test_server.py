@@ -56,6 +56,7 @@ class ServerTests(AlignTestCase):
         self.wait_analyzed()
         state = json.loads(self.req("GET", "/api/state?task=DE-104")[1])
         self.assertEqual(len(state["findings"]), 1)
+        self.assertGreater(state["knowledge"]["total"], 5)
         fid = state["findings"][0]["id"]
         status, body = self.req("POST", "/api/respond", {"finding_id": fid, "response": "use_existing"})
         self.assertEqual(json.loads(body)["status"], "resolved")
@@ -63,14 +64,47 @@ class ServerTests(AlignTestCase):
     def test_bad_requests(self):
         self.assertEqual(self.req("POST", "/api/events", {"task_id": "NOPE", "content": "x"})[0], 400)
         self.assertEqual(self.req("POST", "/api/respond", {"finding_id": "x"})[0], 400)
-        self.assertEqual(self.req("GET", "/api/gate?task=DE-104")[0], 400)
+        self.assertEqual(self.req("GET", "/api/hook?task=DE-104&session=s")[0], 400)
+        self.assertEqual(self.req("GET", "/api/hook?task=DE-104&session=s&hook=stop")[0], 400)
+
+    def hook(self, session, hook, mode="once", event_id=""):
+        q = f"/api/hook?task=DE-104&session={session}&hook={hook}&mode={mode}&event_id={event_id}"
+        return json.loads(self.req("GET", q)[1])
 
     def test_gate_once_then_allow(self):
         self.post_prompt(SCENARIOS["positive"]["prompt"], session="g")
-        q = "/api/gate?task=DE-104&session=g&mode=once"
-        first = json.loads(self.req("GET", q)[1])  # Waits for the pending analysis itself.
+        first = self.hook("g", "pre_tool")  # Waits for the pending analysis itself.
         self.assertEqual(first["decision"], "ask")
         self.assertIn("ADR-12", first["reason"])
-        self.assertEqual(json.loads(self.req("GET", q)[1])["decision"], "allow")
-        self.assertEqual(json.loads(self.req("GET", q.replace("once", "strict"))[1])["decision"], "ask")
-        self.assertEqual(json.loads(self.req("GET", "/api/gate?task=DE-104&session=other&mode=strict")[1])["decision"], "allow")
+        self.assertEqual(self.hook("g", "pre_tool")["decision"], "allow")
+        self.assertEqual(self.hook("g", "pre_tool", mode="strict")["decision"], "ask")
+        self.assertEqual(self.hook("other", "pre_tool", mode="strict")["decision"], "allow")
+
+    def test_prompt_hook_waits_for_its_event_and_delivers_once(self):
+        event_id = json.loads(self.post_prompt(SCENARIOS["duplicate"]["prompt"], session="n")[1])["event_id"]
+        out = self.hook("n", "prompt", event_id=event_id)
+        self.assertIn("lib/events/schema.py", out["additional_context"])
+        self.assertIn("already exists", out["system_message"])
+        self.assertEqual(self.hook("n", "prompt"), {"decision": "allow"})
+
+    def test_plan_hook_sends_plan_back_when_gated(self):
+        r = self.req("POST", "/api/events", {"task_id": "DE-104", "session": "p", "kind": "plan",
+                                             "content": SCENARIOS["positive"]["prompt"]})
+        out = self.hook("p", "plan", event_id=json.loads(r[1])["event_id"])
+        self.assertEqual(out["decision"], "deny")
+        self.assertIn("Revise the plan", out["reason"])
+
+    def test_plan_hook_with_gate_off_leaves_delivery_to_claude_later(self):
+        r = self.req("POST", "/api/events", {"task_id": "DE-104", "session": "q", "kind": "plan",
+                                             "content": SCENARIOS["positive"]["prompt"]})
+        out = self.hook("q", "plan", mode="off", event_id=json.loads(r[1])["event_id"])
+        self.assertEqual(out["decision"], "allow")
+        self.assertIn("ADR-12", out["system_message"])
+        self.assertIn("ADR-12", self.hook("q", "post_tool", mode="off")["additional_context"])
+
+    def test_knowledge_and_findings_routes(self):
+        facts = json.loads(self.req("GET", "/api/knowledge?q=retry%20backoff")[1])
+        self.assertEqual(facts[0]["subject"], "with_backoff")
+        self.post_prompt(SCENARIOS["positive"]["prompt"], session="f")
+        self.wait_analyzed()
+        self.assertEqual([f["fact_id"] for f in json.loads(self.req("GET", "/api/findings?task=DE-104")[1])], ["ADR-12"])
