@@ -1,7 +1,7 @@
 """Load authorized context (tasks and decision records) from files into the database.
 
-A task is a JSON file: {"id", "title", "goal", "work": [{"id", "description", "hours",
-"dependency", "invalidation"}]}.
+A task is a JSON file: {"id", "title", "goal", "assignees": ["name", ...], "work": [{"id",
+"description", "hours", "dependency", "invalidation"}]}.
 
 A record is a Markdown file with a `---` frontmatter block of `key: value` lines. Repeated
 keys (e.g. several `forbid:` lines) become lists. The body below the frontmatter is the
@@ -87,6 +87,9 @@ def import_dir(directory: str | Path) -> dict:
                 (t["id"], t["title"], t.get("goal", ""), str(root), now),
             )
             c.execute("DELETE FROM work WHERE task_id=?", (t["id"],))
+            c.execute("DELETE FROM assignments WHERE task_id=?", (t["id"],))
+            c.executemany("INSERT OR IGNORE INTO assignments VALUES(?,?)",
+                          [(t["id"], str(a)) for a in t.get("assignees", [])])
             for w in t.get("work", []):
                 c.execute(
                     "INSERT INTO work VALUES(?,?,?,?,?,?)",

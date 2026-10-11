@@ -53,6 +53,12 @@ MIGRATIONS = [
     ALTER TABLE findings ADD COLUMN delivered_at REAL;
     ALTER TABLE unverified RENAME COLUMN record_id TO fact_id;
     """,
+    # v3: events say which engineer they came from, and tasks list who is assigned, for the
+    # manager view.
+    """
+    ALTER TABLE events ADD COLUMN engineer TEXT;
+    CREATE TABLE assignments(task_id TEXT NOT NULL, engineer TEXT NOT NULL, PRIMARY KEY(task_id, engineer));
+    """,
 ]
 
 

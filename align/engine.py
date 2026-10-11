@@ -39,9 +39,10 @@ def ingest(event: dict) -> str:
     event_id = str(uuid.uuid4())
     with db.connect() as c:
         c.execute(
-            "INSERT INTO events VALUES(?,?,?,?,?,?,?,?)",
+            "INSERT INTO events(id, task_id, session, kind, content, status, analysis, created, engineer)"
+            " VALUES(?,?,?,?,?,?,?,?,?)",
             (event_id, task, str(event.get("session", "unknown"))[:128], kind, content,
-             "pending", None, time.time()),
+             "pending", None, time.time(), str(event.get("engineer") or "unknown")[:64]),
         )
     return event_id
 
@@ -241,6 +242,85 @@ def snapshot(task_id: str | None = None) -> dict:
         "work": work,
         "exposure": [low, high],
     }
+
+
+def engineer_status(events: list[dict], findings: list[dict], committed: bool) -> str:
+    """One word for where an engineer stands, most urgent first."""
+    if not events:
+        return "not_started"
+    open_ = [f for f in findings if f["status"] == "open"]
+    if any(f["severity"] == "HIGH" for f in open_):
+        return "at_risk"
+    if open_:
+        return "flagged"
+    if any(f["status"] == "needs_review" for f in findings):
+        return "needs_review"
+    if committed:
+        return "aligned" if findings else "on_track"
+    return "exploring"
+
+
+def team(task_id: str | None = None) -> dict:
+    """Manager view: each engineer on a task, the direction they took, and the assumptions
+    Align flagged along the way, plus counts for every step of the pipeline."""
+    with db.connect() as c:
+        tasks = [dict(r) for r in c.execute("SELECT * FROM tasks ORDER BY id")]
+        if task_id is None and tasks:
+            task_id = tasks[0]["id"]
+        q = lambda sql: [dict(r) for r in c.execute(sql, (task_id,))]
+        assigned = [r["engineer"] for r in q("SELECT engineer FROM assignments WHERE task_id=? ORDER BY engineer")]
+        events = q("SELECT * FROM events WHERE task_id=? AND kind != 'post_tool' ORDER BY created DESC LIMIT 500")[::-1]
+        findings = q("SELECT * FROM findings WHERE task_id=? ORDER BY created")
+        commitments = q("SELECT * FROM commitments WHERE task_id=? ORDER BY created")
+        responses = {}
+        for r in q("SELECT r.* FROM responses r JOIN findings f ON f.id=r.finding_id WHERE f.task_id=? ORDER BY r.created"):
+            responses.setdefault(r["finding_id"], []).append(r)
+
+    owner, kinds = {}, {}
+    for e in events:
+        kinds[e["id"]] = e["kind"]
+        e["analysis"] = json.loads(e["analysis"]) if e["analysis"] else None
+        owner[e["session"]] = e["engineer"] or "unknown"
+    for f in findings:
+        f["engineer"] = owner.get(f["session"], "unknown")
+        f["responses"] = responses.get(f["id"], [])
+
+    names = list(dict.fromkeys(assigned + [e["engineer"] or "unknown" for e in events]))
+    engineers = []
+    for name in names:
+        evs = [e for e in events if (e["engineer"] or "unknown") == name]
+        sessions = {e["session"] for e in evs}
+        fs = [f for f in findings if f["engineer"] == name]
+        cs = [x for x in commitments if x["session"] in sessions]
+        # A tool call ("Write handler.py") says less about the direction than the prompt or plan.
+        stated = [x for x in cs if kinds.get(x["source_event"]) in ("prompt", "plan")] or cs
+        engineers.append({
+            "name": name,
+            "assigned": name in assigned,
+            "status": engineer_status(evs, fs, bool(cs)),
+            "sessions": len(sessions),
+            "last_active": evs[-1]["created"] if evs else None,
+            "direction": stated[-1]["statement"] if stated else None,
+            "events": evs,
+            "findings": fs,
+            "exposure": round(sum(f["impact_max"] or 0 for f in fs if f["status"] == "open"), 2),
+        })
+
+    analyses = [e["analysis"] for e in events if e["analysis"]]
+    pipeline = {
+        "captured": len(events),
+        "analyzed": sum(e["status"] == "analyzed" for e in events),
+        "exploring": sum(a.get("stage") == "exploring" for a in analyses),
+        "committed": sum(a.get("stage") == "committed" for a in analyses),
+        "claims": sum(len(a.get("findings", [])) + len(a.get("rejected", [])) for a in analyses),
+        "rejected": sum(len(a.get("rejected", [])) for a in analyses),
+        "findings": len(findings),
+        "delivered": sum(f["delivered_at"] is not None for f in findings),
+        "responded": sum(f["status"] != "open" for f in findings),
+        "resolved": sum(f["status"] == "resolved" for f in findings),
+    }
+    return {"task_id": task_id, "tasks": tasks, "engineers": engineers, "pipeline": pipeline,
+            "now": time.time()}
 
 
 def search_knowledge(query: str, task_id: str | None, limit: int = 20) -> list[dict]:

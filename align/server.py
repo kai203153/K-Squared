@@ -12,6 +12,7 @@ from .worker import Worker
 
 log = logging.getLogger("align.server")
 MAX_BODY = 20000
+PAGES = {"/": "index.html", "/manager": "manager.html"}
 
 
 class LocalServer(ThreadingHTTPServer):
@@ -54,7 +55,7 @@ def make_server(port: int | None = None, worker: Worker | None = None) -> LocalS
             if not self.local_host():
                 self.send_json({"error": "forbidden host"}, 403)
                 return False
-            if urlparse(self.path).path not in ("/", "/health") and not self.authorized():
+            if urlparse(self.path).path not in (*PAGES, "/health") and not self.authorized():
                 self.send_json({"error": "unauthorized"}, 401)
                 return False
             return True
@@ -65,8 +66,8 @@ def make_server(port: int | None = None, worker: Worker | None = None) -> LocalS
             url = urlparse(self.path)
             q = {k: v[0] for k, v in parse_qs(url.query).items()}
             try:
-                if url.path == "/":
-                    html = (ROOT / "dashboard" / "index.html").read_text(encoding="utf-8")
+                if url.path in PAGES:
+                    html = (ROOT / "dashboard" / PAGES[url.path]).read_text(encoding="utf-8")
                     body = html.replace("__ALIGN_TOKEN__", token).encode()
                     self.send_response(200)
                     self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -78,6 +79,8 @@ def make_server(port: int | None = None, worker: Worker | None = None) -> LocalS
                     self.send_json({"ok": True})
                 elif url.path == "/api/state":
                     self.send_json(engine.snapshot(q.get("task") or None))
+                elif url.path == "/api/team":
+                    self.send_json(engine.team(q.get("task") or None))
                 elif url.path == "/api/hook":
                     self.send_json(nudge.respond(
                         q["task"], q["session"], q["hook"], q.get("mode") or None, q.get("event_id") or None,
