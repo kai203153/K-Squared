@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Align Team View</title>
+<style>
+:root{--bg:#f5f6f8;--panel:#fff;--line:#dfe4e7;--soft:#edf0f2;--text:#172230;--muted:#6d7983;--head:#132d37;--head-text:#c6d9dc;
+--btn:#173d4a;--btn-text:#fff;--btn2:#eaf0f1;--btn2-text:#233e49;--code:#eef2f4;--warn-bg:#fff1e1;--warn:#935200;--high-bg:#fee6e7;--high:#a1212a;
+--ok-bg:#e3f4ea;--ok:#1d6b3c;--quote:#f7f9fa;--mark-high:#d03b3b;--mark-warn:#e49b0f;--mark-ok:#2e9e5b;--mark-plain:#9aa6ae;--accent:#2a78d6}
+@media (prefers-color-scheme:dark){:root{--bg:#0f171c;--panel:#16222a;--line:#2a3a44;--soft:#22313a;--text:#e3eaee;--muted:#93a3ad;--head:#0b1d24;
+--head-text:#9fbcc2;--btn:#4f8d9e;--btn-text:#08161b;--btn2:#253740;--btn2-text:#d5e3e7;--code:#22313a;--warn-bg:#3a2a12;--warn:#f0b867;
+--high-bg:#3d1c20;--high:#ff9aa2;--ok-bg:#163223;--ok:#86d6a5;--quote:#1b2a33;--mark-high:#f0646a;--mark-warn:#f5b53d;--mark-ok:#4cc27c;--mark-plain:#6c7b85;--accent:#3987e5}}
+*{box-sizing:border-box}
+body{font-family:Inter,system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);margin:0}
+header{background:var(--head);color:#fff;padding:22px 5%;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+header h1{margin:0;font-size:22px}header .sub{color:var(--head-text);margin-top:6px;font-size:14px}
+header a{color:var(--head-text)}
+select{font:inherit;padding:7px 9px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--text)}
+main{max-width:1180px;margin:24px auto;padding:0 16px}
+.panel{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:18px;margin-bottom:18px;min-width:0}
+h2{font-size:16px;margin:0 0 4px;display:flex;gap:8px;align-items:center}
+.lede{margin:0 0 14px}
+.muted,small{color:var(--muted)}
+.pill{background:var(--warn-bg);color:var(--warn);border-radius:7px;padding:3px 8px;font-size:12px;font-weight:700;white-space:nowrap}
+.pill.high{background:var(--high-bg);color:var(--high)}.pill.ok{background:var(--ok-bg);color:var(--ok)}.pill.plain{background:var(--soft);color:var(--muted)}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+code{background:var(--code);padding:2px 5px;border-radius:4px}
+blockquote{margin:0;background:var(--quote);border-left:3px solid var(--line);padding:8px 10px;border-radius:6px;overflow-wrap:anywhere;font-size:14px}
+blockquote small{display:block;margin-bottom:4px}
+.quotes{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}@media(max-width:520px){.quotes{grid-template-columns:1fr}}
+
+/* Headline numbers */
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}@media(max-width:760px){.tiles{grid-template-columns:1fr 1fr}}
+.tile{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:14px 16px}
+.tile .n{font-size:30px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1}
+.tile .l{font-size:13px;color:var(--muted);margin-top:4px}
+
+/* Pipeline flow */
+.flow{display:grid;grid-template-columns:repeat(6,1fr);gap:22px;counter-reset:step}
+@media(max-width:900px){.flow{grid-template-columns:1fr 1fr;gap:12px}.flow .step::after{display:none}}
+.step{position:relative;border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--quote)}
+.step::after{content:"";position:absolute;right:-17px;top:50%;width:12px;height:12px;border-top:2px solid var(--muted);border-right:2px solid var(--muted);transform:translateY(-50%) rotate(45deg)}
+.step:last-child::after{display:none}
+.step .n{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums}
+.step .l{font-size:13px;font-weight:600;margin-top:2px}
+.step .s{font-size:12px;color:var(--muted);margin-top:6px}
+.step .bar{height:4px;border-radius:2px;background:var(--soft);margin-top:8px;overflow:hidden}
+.step .bar i{display:block;height:100%;background:var(--accent);border-radius:2px}
+.step.flag .bar i{background:var(--mark-warn)}.step.good .bar i{background:var(--mark-ok)}
+
+/* Timeline */
+#timeline{position:relative}
+#timeline svg{display:block;width:100%;overflow:visible}
+#timeline text{fill:var(--muted);font-size:11px;font-family:inherit}
+#timeline .lane-label{fill:var(--text);font-size:13px;font-weight:600}
+#timeline .grid{stroke:var(--soft);stroke-width:1}
+#timeline .lane{stroke:var(--line);stroke-width:1}
+#timeline .link{stroke-width:2;stroke-dasharray:3 3}
+.m-high{fill:var(--mark-high)}.m-warn{fill:var(--mark-warn)}.m-ok{fill:var(--mark-ok)}.m-plain{fill:var(--mark-plain)}.m-pending{fill:var(--panel);stroke:var(--mark-plain);stroke-width:2}
+.s-high{stroke:var(--mark-high)}.s-warn{stroke:var(--mark-warn)}.s-ok{stroke:var(--mark-ok)}.s-plain{stroke:var(--mark-plain)}
+.mark{stroke:var(--panel);stroke-width:2}
+.hit{fill:transparent;cursor:pointer}.hit:hover+.mark,.hit:focus+.mark{stroke:var(--text)}
+.hit:focus{outline:none}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;color:var(--muted);margin-top:10px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend svg{width:12px;height:12px}
+#tip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px;
+  box-shadow:0 4px 18px rgba(0,0,0,.15);font-size:13px;max-width:320px;z-index:5;display:none}
+#tip strong{display:block;margin-bottom:2px}#tip .c{color:var(--muted);margin-top:4px;overflow-wrap:anywhere}
+
+/* Engineers */
+.team{display:grid;grid-template-columns:1fr 1fr;gap:18px}@media(max-width:860px){.team{grid-template-columns:1fr}}
+.eng{margin:0}
+.eng h3{margin:0;font-size:17px}
+.stepper{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:12px 0}
+.stepper div{font-size:11px;color:var(--muted);padding-top:7px;border-top:4px solid var(--soft);border-radius:2px}
+.stepper .done{border-top-color:var(--mark-ok);color:var(--text)}
+.stepper .flag{border-top-color:var(--mark-warn);color:var(--text)}
+.stepper .high{border-top-color:var(--mark-high);color:var(--text)}
+.direction{font-size:14px;margin:4px 0 10px}
+.assume{border-top:1px solid var(--soft);padding:10px 0}
+.assume:first-of-type{border-top:0}
+.assume p{margin:6px 0}
+.note{font-size:13px;margin-top:6px}
+.draft{white-space:pre-wrap}
+</style>
+</head>
+<body>
+<header>
+  <div><h1>ALIGN <span style="font-weight:400;font-size:16px">/ Team View</span></h1>
+  <div class="sub">Where each engineer is heading, and the assumptions Align checked along the way</div></div>
+  <div class="row"><label class="row" style="color:var(--head-text)">Task <select id="task"></select></label>
+  <a href="/">Engineer view</a></div>
+</header>
+<main>
+  <div class="panel" id="taskPanel">Loading…</div>
+  <div class="tiles" id="tiles"></div>
+
+  <div class="panel"><h2>How Align checked the work</h2>
+    <p class="lede muted">Every prompt and plan goes through these steps. Each number counts what made it that far.</p>
+    <div class="flow" id="flow"></div></div>
+
+  <div class="panel"><h2>Timeline</h2>
+    <p class="lede muted">One lane per engineer. Shape is what they sent; color is what Align found. A dashed line runs from a flagged assumption to the engineer's answer.</p>
+    <div id="timeline"><div id="tip"></div><div id="tsvg"></div></div>
+    <div class="legend" id="legend"></div></div>
+
+  <div class="panel" id="waiting"></div>
+
+  <div class="team" id="team"></div>
+</main>
+<script>
+const TOKEN = "__ALIGN_TOKEN__";
+const esc = s => String(s ?? "").replace(/[&<>"']/g, x => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[x]));
+const $ = id => document.getElementById(id);
+const api = path => fetch(path, {headers: {"X-Align-Token": TOKEN}}).then(r => r.json());
+const ago = t => { const s = Math.round(Date.now() / 1000 - t); return s < 60 ? `${s}s ago` : s < 3600 ? `${Math.round(s / 60)}m ago` : `${Math.round(s / 3600)}h ago`; };
+const clock = t => new Date(t * 1000).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit", second: "2-digit"});
+let task = null, last = "", data = null;
+
+// Status is a state, so it always shows an icon and a label, never color alone.
+const STATUS = {
+  at_risk:      {label: "At risk", icon: "▲", cls: "high", rank: 0},
+  flagged:      {label: "Assumption flagged", icon: "●", cls: "", rank: 1},
+  needs_review: {label: "Needs your input", icon: "?", cls: "", rank: 2},
+  exploring:    {label: "Exploring", icon: "…", cls: "plain", rank: 3},
+  on_track:     {label: "On track", icon: "✓", cls: "ok", rank: 4},
+  aligned:      {label: "Aligned", icon: "✓", cls: "ok", rank: 5},
+  not_started:  {label: "Not started", icon: "○", cls: "plain", rank: 6},
+};
+const RESPONSE = {use_existing: "Followed the verified fact", new_evidence: "Says they have new evidence",
+                  ask_manager: "Drafted a question for you", dismiss: "Dismissed"};
+const FINDING_STATE = {open: ["Open", "high"], resolved: ["Aligned", "ok"], needs_review: ["Needs your input", ""], dismissed: ["Dismissed", "plain"]};
+const KIND = {prompt: "Prompt", plan: "Plan", pre_tool: "Tool call"};
+const RESULT = {finding: "Assumption flagged", exploration: "Exploring, left alone", no_supported_finding: "Checked, nothing to raise",
+                ignored_non_decision_event: "Not a decision", error: "Analysis failed"};
+
+const sevClass = s => s === "HIGH" ? "high" : "warn";
+function eventClass(e, byId) {
+  if (e.status === "pending") return "pending";
+  const a = e.analysis || {};
+  if (a.result === "finding") {
+    const sevs = (a.findings || []).map(id => byId[id]?.severity);
+    return sevs.includes("HIGH") ? "high" : "warn";
+  }
+  return a.result === "no_supported_finding" ? "ok" : "plain";
+}
+const responseClass = f => f.status === "resolved" ? "ok" : f.status === "dismissed" ? "plain" : "warn";
+
+// Mark shapes, centered at 0,0: what the engineer sent.
+const SHAPE = {
+  prompt: r => `<circle r="${r}"/>`,
+  plan: r => `<rect x="${-r}" y="${-r}" width="${2 * r}" height="${2 * r}" rx="2"/>`,
+  pre_tool: r => `<path d="M0,${-r - 1} L${r + 1},${r} L${-r - 1},${r} Z"/>`,
+  response: r => `<path d="M0,${-r - 1} L${r + 1},0 L0,${r + 1} L${-r - 1},0 Z"/>`,
+};
+
+function renderTiles(d) {
+  const eng = d.engineers, findings = eng.flatMap(e => e.findings);
+  const active = eng.filter(e => e.status !== "not_started").length, assigned = eng.filter(e => e.assigned).length;
+  const open = findings.filter(f => f.status === "open"), high = open.filter(f => f.severity === "HIGH").length;
+  const waiting = findings.filter(f => f.status === "needs_review").length;
+  const exposure = eng.reduce((s, e) => s + e.exposure, 0);
+  const tile = (n, l) => `<div class="tile"><div class="n">${n}</div><div class="l">${l}</div></div>`;
+  $("tiles").innerHTML =
+    tile(`${active}<span class="muted" style="font-size:18px"> / ${assigned || eng.length}</span>`, "engineers active") +
+    tile(open.length, `open assumptions${high ? ` · <span class="pill high">▲ ${high} HIGH</span>` : ""}`) +
+    tile(waiting, "waiting on your input") +
+    tile(`${exposure.toFixed(1)}<span class="muted" style="font-size:18px"> h</span>`, "rework at risk (estimate)");
+}
+
+function renderFlow(p) {
+  const pct = (n, of) => of ? Math.round(100 * n / of) : 0;
+  const steps = [
+    [p.captured, "Captured", "prompts, plans and tool calls (redacted)", p.captured, ""],
+    [p.committed, "Committed to a direction", `${p.exploring} still exploring, left alone`, p.captured, ""],
+    [p.claims, "Assumptions checked", "against confirmed decisions and production code", p.claims, ""],
+    [p.findings, "Grounded findings", `${p.rejected} unsupported claim${p.rejected === 1 ? "" : "s"} dropped, never shown`, p.claims, "flag"],
+    [p.delivered, "Raised in Claude Code", "as a question citing the source", p.findings, "flag"],
+    [p.responded, "Answered by engineer", `${p.resolved} now aligned with the facts`, p.findings, "good"],
+  ];
+  $("flow").innerHTML = steps.map(([n, l, s, of, cls]) => `<div class="step ${cls}"><div class="n">${n}</div><div class="l">${l}</div>
+    <div class="bar"><i style="width:${pct(n, of)}%"></i></div><div class="s">${s}</div></div>`).join("");
+}
+
+function renderLegend() {
+  const sw = (shape, cls) => `<svg viewBox="-7 -7 14 14"><g class="${cls === "pending" ? "m-pending" : "m-" + cls}">${SHAPE[shape](5)}</g></svg>`;
+  $("legend").innerHTML = [
+    [sw("prompt", "plain"), "Prompt"], [sw("plan", "plain"), "Plan"], [sw("pre_tool", "plain"), "Tool call"], [sw("response", "plain"), "Engineer's answer"],
+    [sw("prompt", "high"), "Conflicts with a decision"], [sw("prompt", "warn"), "Already exists / code conflict"],
+    [sw("prompt", "ok"), "Checked, clear"], [sw("prompt", "plain"), "Exploring"], [sw("prompt", "pending"), "Analyzing"],
+  ].map(([s, l]) => `<span>${s}${l}</span>`).join("");
+}
+
+function renderTimeline(d) {
+  const host = $("tsvg"), lanes = [...d.engineers].sort(byUrgency);
+  const all = lanes.flatMap(e => e.events.map(x => x.created).concat(e.findings.flatMap(f => f.responses.map(r => r.created))));
+  if (!all.length) { host.innerHTML = `<p class="muted">No activity yet. Run <code>python3 scripts/team_demo.py</code> or start working in a repo with Align hooks.</p>`; return; }
+  const W = host.clientWidth || 800, labelW = W < 520 ? 92 : 140, padR = 18, laneH = 46, top = 8, H = top + lanes.length * laneH + 26;
+  // Fit the axis to the activity, with a margin so the first and last marks clear the edges.
+  const lo = Math.min(...all), hi = Math.max(...all), pad = Math.max((hi - lo) * 0.04, 2);
+  const t0 = lo - pad, span = Math.max(hi - lo, 10) + 2 * pad;
+  const x = t => labelW + 10 + (t - t0) / span * (W - labelW - 10 - padR);
+  const y = i => top + i * laneH + laneH / 2;
+  const byId = Object.fromEntries(d.engineers.flatMap(e => e.findings).map(f => [f.id, f]));
+  let svg = "";
+  const ticks = W < 520 ? 2 : 5;
+  for (let k = 0; k <= ticks; k++) {
+    const t = t0 + span * k / ticks, xx = x(t), anchor = k === 0 ? "start" : k === ticks ? "end" : "middle";
+    svg += `<line class="grid" x1="${xx}" x2="${xx}" y1="${top}" y2="${H - 22}"/><text x="${xx}" y="${H - 6}" text-anchor="${anchor}">${clock(t)}</text>`;
+  }
+  const marks = [];
+  lanes.forEach((e, i) => {
+    const yy = y(i), st = STATUS[e.status];
+    svg += `<line class="lane" x1="${labelW + 10}" x2="${W - padR}" y1="${yy}" y2="${yy}"/>
+      <text class="lane-label" x="0" y="${yy - 3}">${esc(e.name.length > 16 && W < 520 ? e.name.split(" ")[0] : e.name)}</text>
+      <text x="0" y="${yy + 13}">${st.icon} ${esc(st.label)}</text>`;
+    // Links from the event that raised a finding to the engineer's answer.
+    const raisedAt = {};
+    e.events.forEach(ev => (ev.analysis?.findings || []).forEach(id => { raisedAt[id] ??= ev.created; }));
+    e.findings.forEach(f => f.responses.forEach(r => {
+      const from = raisedAt[f.id] ?? f.created;
+      svg += `<line class="link s-${responseClass(f)}" x1="${x(from)}" x2="${x(r.created)}" y1="${yy}" y2="${yy}"/>`;
+      marks.push({x: x(r.created), y: yy, shape: "response", cls: responseClass(f),
+        tip: [e.name, `${RESPONSE[r.response] || r.response} · ${clock(r.created)}`, r.note || f.assumption || ""]});
+    }));
+    e.events.forEach(ev => {
+      const a = ev.analysis || {}, cls = eventClass(ev, byId);
+      const fs = (a.findings || []).map(id => byId[id]).filter(Boolean);
+      marks.push({x: x(ev.created), y: yy, shape: ev.kind, cls,
+        tip: [e.name, `${KIND[ev.kind] || ev.kind} · ${clock(ev.created)} · ${ev.status === "pending" ? "Analyzing…" : RESULT[a.result] || a.result || ev.status}`,
+              fs.length ? fs.map(f => `[${f.severity}] ${f.assumption || f.event_quote}`).join("\n") : ev.content.slice(0, 220)]});
+    });
+  });
+  marks.forEach((m, i) => {
+    svg += `<g transform="translate(${m.x},${m.y})"><circle class="hit" r="13" tabindex="0" data-tip="${i}"/>
+      <g class="mark ${m.cls === "pending" ? "m-pending" : "m-" + m.cls}">${SHAPE[m.shape](m.shape === "pre_tool" ? 5 : 6)}</g></g>`;
+  });
+  host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" height="${H}" role="img" aria-label="Activity timeline per engineer">${svg}</svg>`;
+  host.marks = marks;
+}
+
+// Tooltip text comes from engineer prompts: set it with textContent, never innerHTML.
+function showTip(el) {
+  const m = $("tsvg").marks?.[el.dataset.tip]; if (!m) return;
+  const tip = $("tip"); tip.replaceChildren();
+  const [who, what, detail] = m.tip;
+  const s = document.createElement("strong"); s.textContent = what; tip.append(s);
+  const w = document.createElement("div"); w.textContent = who; w.className = "muted"; tip.append(w);
+  if (detail) { const c = document.createElement("div"); c.className = "c"; c.style.whiteSpace = "pre-line"; c.textContent = detail; tip.append(c); }
+  tip.style.display = "block";
+  const box = $("timeline").getBoundingClientRect(), r = el.getBoundingClientRect();
+  const left = Math.min(Math.max(r.left - box.left + r.width / 2 - tip.offsetWidth / 2, 0), box.width - tip.offsetWidth);
+  tip.style.left = left + "px"; tip.style.top = (r.top - box.top - tip.offsetHeight - 6) + "px";
+}
+const hideTip = () => { $("tip").style.display = "none"; };
+$("tsvg").addEventListener("pointerover", e => e.target.dataset.tip && showTip(e.target));
+$("tsvg").addEventListener("pointerout", e => e.target.dataset.tip && hideTip());
+$("tsvg").addEventListener("focusin", e => e.target.dataset.tip && showTip(e.target));
+$("tsvg").addEventListener("focusout", hideTip);
+
+function assumptionHtml(f, withName) {
+  const [state, cls] = FINDING_STATE[f.status] || [f.status, "plain"];
+  const r = f.responses[f.responses.length - 1];
+  return `<div class="assume">
+    <div class="row"><span class="pill ${sevClass(f.severity) === "high" ? "high" : ""}">${esc(f.severity)}</span><span class="pill ${cls}">${esc(state)}</span>
+      ${f.delivered_at ? `<span class="pill plain">raised in Claude</span>` : ""}${withName ? `<strong>${esc(f.engineer)}</strong>` : ""}<small>${ago(f.created)}</small></div>
+    <p><strong>Assumed:</strong> ${esc(f.assumption || f.event_quote)}</p>
+    <div class="quotes"><blockquote><small>Engineer said</small>${esc(f.event_quote)}</blockquote>
+      <blockquote><small>${esc(f.fact_source)} ${f.relation === "already_exists" ? "already has" : "says"}</small>${esc(f.fact_quote)}</blockquote></div>
+    ${r ? `<div class="note"><strong>${esc(RESPONSE[r.response] || r.response)}</strong> <small>${ago(r.created)}</small>${r.note ? `<div class="muted">“${esc(r.note)}”</div>` : ""}</div>` : ""}
+    ${r && r.draft ? `<blockquote class="draft" style="margin-top:8px"><small>Their question</small>${esc(r.draft)}</blockquote>` : ""}
+  </div>`;
+}
+
+function stepper(e) {
+  const fs = e.findings, open = fs.filter(f => f.status === "open");
+  const started = e.status !== "not_started", committed = !!e.direction;
+  const check = !committed ? ["", "Assumptions checked"]
+    : open.some(f => f.severity === "HIGH") ? ["high", "Conflict open"]
+    : open.length || fs.some(f => f.status === "needs_review") ? ["flag", "Assumption flagged"]
+    : ["done", fs.length ? "Flags answered" : "Nothing flagged"];
+  const aligned = e.status === "aligned" || e.status === "on_track";
+  return `<div class="stepper">
+    <div class="${started ? "done" : ""}">Exploring</div><div class="${committed ? "done" : ""}">Direction set</div>
+    <div class="${check[0]}">${check[1]}</div><div class="${aligned ? "done" : ""}">Aligned</div></div>`;
+}
+
+const byUrgency = (a, b) => STATUS[a.status].rank - STATUS[b.status].rank || a.name.localeCompare(b.name);
+function renderTeam(d) {
+  $("team").innerHTML = [...d.engineers].sort(byUrgency).map(e => {
+    const st = STATUS[e.status];
+    return `<div class="panel eng">
+      <div class="row" style="justify-content:space-between"><h3>${esc(e.name)}</h3><span class="pill ${st.cls}">${st.icon} ${esc(st.label)}</span></div>
+      <small>${e.assigned ? "Assigned" : "Not assigned to this task"} · ${e.sessions} session${e.sessions === 1 ? "" : "s"}${e.last_active ? " · active " + ago(e.last_active) : ""}${e.exposure ? ` · <strong>${e.exposure.toFixed(1)} h</strong> at risk` : ""}</small>
+      ${stepper(e)}
+      <div class="direction">${e.direction ? `<small>Current direction</small><br>${esc(e.direction)}` : `<span class="muted">${e.events.length ? "Still exploring; no direction committed yet." : "No activity yet."}</span>`}</div>
+      ${e.findings.length ? e.findings.slice().reverse().map(f => assumptionHtml(f, false)).join("") : e.events.length ? `<p class="muted">No assumptions conflicted with verified knowledge.</p>` : ""}
+    </div>`;
+  }).join("");
+}
+
+function renderWaiting(d) {
+  const fs = d.engineers.flatMap(e => e.findings).filter(f => f.status === "needs_review");
+  $("waiting").innerHTML = `<h2>Waiting on your input <span class="pill ${fs.length ? "" : "plain"}">${fs.length}</span></h2>
+    <p class="lede muted">The engineer has new evidence or a question. Their direction depends on your answer.</p>`
+    + (fs.length ? fs.map(f => assumptionHtml(f, true)).join("") : `<p class="muted">Nothing is waiting on you.</p>`);
+}
+
+function render(d) {
+  data = d;
+  const t = d.tasks.find(x => x.id === d.task_id);
+  $("task").innerHTML = d.tasks.map(x => `<option value="${esc(x.id)}" ${x.id === d.task_id ? "selected" : ""}>${esc(x.id)}</option>`).join("");
+  $("taskPanel").innerHTML = t ? `<h2>${esc(t.id)} · ${esc(t.title)}</h2><p class="muted" style="margin:0">${esc(t.goal)}</p>`
+    : `<h2>No tasks</h2><p class="muted">Run <code>python3 -m align init --example de-104</code>.</p>`;
+  renderTiles(d); renderFlow(d.pipeline); renderTimeline(d); renderWaiting(d); renderTeam(d);
+}
+
+async function refresh(force) {
+  try {
+    const d = await api("/api/team" + (task ? "?task=" + encodeURIComponent(task) : ""));
+    task = d.task_id;
+    const {now, ...rest} = d, key = JSON.stringify(rest);
+    if (force || key !== last) { last = key; hideTip(); render(d); }
+  } catch (e) { $("taskPanel").textContent = "Backend unavailable."; }
+}
+$("task").addEventListener("change", e => { task = e.target.value; refresh(true); });
+let resizeTimer; window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => data && renderTimeline(data), 120); });
+renderLegend();
+setInterval(refresh, 1000); setInterval(() => refresh(true), 15000); refresh();
+</script>
+</body>
+</html>

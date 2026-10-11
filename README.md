@@ -13,7 +13,7 @@ The warnings appear:
 - **As a desktop pop-up** (macOS, or Linux with `notify-send`).
 - **At commit time**, through an optional git pre-commit check.
 
-Findings are private to the engineer. Nothing is sent to anyone.
+Nothing leaves the machine Align runs on. Findings show on the engineer's dashboard and, for whoever can open the same local server, on the [team view](#team-view).
 
 ```
 prompt / plan / tool call ──► hook ──► Align server ──► detector ──► grounding ──► finding
@@ -100,6 +100,27 @@ python3 -m align install-hooks path/to/repo --task YOUR-TASK --gate once --git
 - `--git` also installs the pre-commit check. It refuses to overwrite a pre-commit hook that isn't Align's unless you pass `--force`.
 - `--git` installs into the git repository that contains `<repo>`. For a subfolder of a larger repo, that's the larger repo.
 
+## Team view
+
+`http://127.0.0.1:8765/manager` shows a manager how the engineers assigned to a task are doing:
+
+- **Headline numbers:** engineers active, open assumptions, items waiting on the manager, rework hours at risk.
+- **How Align checked the work:** the pipeline from captured prompts through grounding to the engineer's answer, with a count at each step. The counts include claims the grounding check dropped.
+- **Timeline:** one lane per engineer. Shape shows what was sent (prompt, plan, tool call), color shows what Align found, and a dashed line joins each flagged assumption to the engineer's answer. Hover or focus a mark for details.
+- **Waiting on your input:** findings where the engineer chose "I have new evidence" or "Draft a question", with their note and draft.
+- **One card per engineer:** status (at risk, assumption flagged, needs your input, exploring, on track, aligned, not started), a progress stepper, their current direction, and each assumption with both quotes and their answer.
+
+Engineers are identified by `ALIGN_ENGINEER` (falling back to `$USER`) in the hook's environment, and listed in advance by the task's `assignees`.
+
+For a live demo, run `scripts/demo.sh`, open `/manager`, then in another shell:
+
+```bash
+python3 scripts/team_demo.py            # four engineers work DE-104, one step every 3 s
+python3 scripts/team_demo.py --pace 0   # all at once
+```
+
+The team view shows engineers' prompts, assumptions and notes. Agree with your team on who can see it before using it outside a demo.
+
 ## How the engineer is nudged
 
 | Hook | What happens |
@@ -114,7 +135,7 @@ Each finding is delivered once. Everything fails open: if Align is down or slow,
 
 ## Context format
 
-A task is a JSON file: `{"id", "title", "goal", "work": [{"id", "description", "hours", "dependency", "invalidation"}]}`. The work items feed the exposure estimate for HIGH findings.
+A task is a JSON file: `{"id", "title", "goal", "assignees": ["name", ...], "work": [{"id", "description", "hours", "dependency", "invalidation"}]}`. The work items feed the exposure estimate for HIGH findings.
 
 A record is Markdown with `key: value` frontmatter:
 
@@ -160,6 +181,7 @@ python3 -m align serve                       # ALIGN_DETECTOR=auto uses Claude w
 | `ALIGN_NUDGE_WAIT` | `15` | Seconds the prompt/plan hook waits for analysis |
 | `ALIGN_GATE` | `off` | Hook-side: `off`, `once` (pause once per HIGH finding), `strict` (until responded; also blocks commits) |
 | `ALIGN_TASK_ID` | none | Hook-side: which task this repo works on |
+| `ALIGN_ENGINEER` | `$USER` | Hook-side: who is working, shown on the team view |
 | `ALIGN_CAPTURE_COMMANDS` | `0` | Hook-side: `1` captures Bash commands (redacted) as well as tool names |
 
 ## API
@@ -167,17 +189,18 @@ python3 -m align serve                       # ALIGN_DETECTOR=auto uses Claude w
 All `/api/*` routes require `X-Align-Token` (the contents of `.align/token`). Requests whose `Host` isn't `127.0.0.1` or `localhost` are rejected.
 
 - `GET /api/state?task=`: tasks, records, knowledge stats, events, commitments, findings, work, exposure.
+- `GET /api/team?task=`: per-engineer status, direction, events and findings, plus pipeline counts, for the team view.
 - `GET /api/hook?task=&session=&hook=prompt|plan|pre_tool|post_tool&mode=&event_id=`: what that hook should say: `decision`, `reason`, `system_message`, `additional_context`.
 - `GET /api/findings?task=&session=`: open findings, most severe first.
 - `GET /api/knowledge?q=&task=`: search verified facts.
-- `POST /api/events` `{task_id, session, kind: prompt|plan|pre_tool|post_tool, content}` → `202`.
+- `POST /api/events` `{task_id, session, engineer?, kind: prompt|plan|pre_tool|post_tool, content}` → `202`.
 - `POST /api/respond` `{finding_id, response: use_existing|new_evidence|ask_manager|dismiss, note?}`. `ask_manager` returns a question **draft** for the engineer to send themselves.
 - `POST /api/import` `{path}`.
 
 ## Development
 
 ```bash
-python3 -m unittest discover -s tests -t .   # 76 tests; no network, SDK or Claude login needed
+python3 -m unittest discover -s tests -t .   # 81 tests; no network, SDK or Claude login needed
 python3 -m align reset                       # clear activity, keep context and knowledge
 python3 -m align knowledge list [query]      # inspect the ground truth
 ```

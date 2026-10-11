@@ -2,6 +2,7 @@
   "id": "DE-104",
   "title": "Customer events ingestion",
   "goal": "Support additional customer events in existing analytics platform",
+  "assignees": ["Alex Rivera", "Sam Okafor", "Priya Nair", "Jordan Lee"],
   "work": [
     {"id": "W1", "description": "Implement ingestion handler", "hours": 2, "dependency": 1, "invalidation": 1},
     {"id": "W2", "description": "Provision new infrastructure", "hours": 1.5, "dependency": 1, "invalidation": 1},

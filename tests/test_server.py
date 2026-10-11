@@ -61,6 +61,25 @@ class ServerTests(AlignTestCase):
         status, body = self.req("POST", "/api/respond", {"finding_id": fid, "response": "use_existing"})
         self.assertEqual(json.loads(body)["status"], "resolved")
 
+    def test_manager_page_and_team(self):
+        status, html = self.req("GET", "/manager", token=False)
+        self.assertEqual(status, 200)
+        self.assertIn(self.token, html)
+        self.req("POST", "/api/events", {"task_id": "DE-104", "session": "a", "kind": "prompt",
+                                         "content": SCENARIOS["positive"]["prompt"], "engineer": "Alex Rivera"})
+        self.req("POST", "/api/events", {"task_id": "DE-104", "session": "b", "kind": "prompt",
+                                         "content": SCENARIOS["negative"]["prompt"], "engineer": "Jordan Lee"})
+        self.wait_analyzed()
+        team = json.loads(self.req("GET", "/api/team?task=DE-104")[1])
+        by_name = {e["name"]: e for e in team["engineers"]}
+        self.assertEqual(by_name["Alex Rivera"]["status"], "at_risk")
+        self.assertEqual(by_name["Alex Rivera"]["findings"][0]["fact_id"], "ADR-12")
+        self.assertEqual(by_name["Jordan Lee"]["status"], "exploring")
+        self.assertEqual(by_name["Sam Okafor"]["status"], "not_started")  # Assigned, no activity yet.
+        self.assertTrue(by_name["Sam Okafor"]["assigned"])
+        self.assertEqual((team["pipeline"]["captured"], team["pipeline"]["findings"]), (2, 1))
+        self.assertEqual(self.req("GET", "/api/team", token=False)[0], 401)
+
     def test_bad_requests(self):
         self.assertEqual(self.req("POST", "/api/events", {"task_id": "NOPE", "content": "x"})[0], 400)
         self.assertEqual(self.req("POST", "/api/respond", {"finding_id": "x"})[0], 400)

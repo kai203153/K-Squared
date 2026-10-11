@@ -43,6 +43,7 @@ def main() -> None:
     ap.add_argument("scenario")
     ap.add_argument("--example", default="de-104")
     ap.add_argument("--task", default="DE-104")
+    ap.add_argument("--engineer", help="who is working, shown on the manager view (default: $USER)")
     ap.add_argument("--tool", help="also send a PreToolUse Write for this file name")
     ap.add_argument("--gate", default="off", choices=("off", "once", "strict"))
     ap.add_argument("--plan", action="store_true", help="send the text as an ExitPlanMode plan instead of a prompt")
@@ -54,6 +55,8 @@ def main() -> None:
     prompt = scenarios[args.scenario]["prompt"]
     session = "sim-" + args.scenario
     env = {**os.environ, "ALIGN_TASK_ID": args.task, "ALIGN_GATE": args.gate}
+    if args.engineer:
+        env["ALIGN_ENGINEER"] = args.engineer
 
     print(f"Scenario: {args.scenario}\n{'Plan' if args.plan else 'Prompt'}:   {prompt}")
     if args.plan:
